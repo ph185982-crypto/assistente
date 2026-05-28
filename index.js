@@ -5,13 +5,11 @@ const express = require('express');
 const app = express();
 app.use(express.json());
 
-// Webhook
 app.use('/webhook', require('./src/webhook'));
 
-// Scheduler do Max (lembretes + relatórios)
+app.get('/health', (_, res) => res.json({ status: 'ok', service: 'max' }));
+
 require('./src/max/scheduler');
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`[Max] Servidor rodando na porta ${PORT}`);
-});
+app.listen(PORT, () => console.log(`[Max] Rodando na porta ${PORT}`));

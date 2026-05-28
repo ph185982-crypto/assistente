@@ -7,7 +7,7 @@ const supabase = createClient(
   process.env.SUPABASE_KEY
 );
 
-// ── Transações ──────────────────────────────────────────────
+// ── Transações ───────────────────────────────────────────────
 
 async function inserirTransacao(dados) {
   const mes = dados.data_transacao
@@ -29,12 +29,11 @@ async function confirmarTransacao(id) {
     .from('transacoes')
     .update({ confirmado: true })
     .eq('id', id);
-
   if (error) throw error;
 }
 
 async function buscarTransacoesPeriodo(inicio, fim, categoria = null) {
-  let query = supabase
+  let q = supabase
     .from('transacoes')
     .select('*')
     .eq('confirmado', true)
@@ -42,9 +41,8 @@ async function buscarTransacoesPeriodo(inicio, fim, categoria = null) {
     .lte('data_transacao', fim)
     .order('data_transacao', { ascending: false });
 
-  if (categoria) query = query.eq('categoria', categoria);
-
-  const { data, error } = await query;
+  if (categoria) q = q.eq('categoria', categoria);
+  const { data, error } = await q;
   if (error) throw error;
   return data;
 }
@@ -74,28 +72,54 @@ async function buscarTransacoesMes(mes = null) {
 }
 
 async function buscarTransacoesOntem() {
-  const ontem = new Date();
-  ontem.setDate(ontem.getDate() - 1);
-  const d = ontem.toISOString().slice(0, 10);
-  return buscarTransacoesPeriodo(d, d);
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const s = d.toISOString().slice(0, 10);
+  return buscarTransacoesPeriodo(s, s);
 }
 
 async function buscarTransacoesSemanaPassada() {
   const hoje = new Date();
-  const fimSemana = new Date(hoje);
-  fimSemana.setDate(hoje.getDate() - hoje.getDay() - 1);
-  const inicioSemana = new Date(fimSemana);
-  inicioSemana.setDate(fimSemana.getDate() - 6);
+  const fim = new Date(hoje);
+  fim.setDate(hoje.getDate() - hoje.getDay() - 1);
+  const inicio = new Date(fim);
+  inicio.setDate(fim.getDate() - 6);
   return buscarTransacoesPeriodo(
-    inicioSemana.toISOString().slice(0, 10),
-    fimSemana.toISOString().slice(0, 10)
+    inicio.toISOString().slice(0, 10),
+    fim.toISOString().slice(0, 10)
   );
 }
 
 async function buscarTransacoesMesPassado() {
   const hoje = new Date();
-  const mesPassado = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
-  return buscarTransacoesMes(mesPassado.toISOString().slice(0, 7));
+  const mp = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+  return buscarTransacoesMes(mp.toISOString().slice(0, 7));
+}
+
+// ── Pendentes de confirmação (substitui o Map em memória) ────
+
+async function setPendente(numero, transacaoId) {
+  const { error } = await supabase
+    .from('pendentes_confirmacao')
+    .upsert([{ numero, transacao_id: transacaoId }]);
+  if (error) throw error;
+}
+
+async function getPendente(numero) {
+  const { data, error } = await supabase
+    .from('pendentes_confirmacao')
+    .select('transacao_id')
+    .eq('numero', numero)
+    .single();
+  if (error) return null;
+  return data?.transacao_id || null;
+}
+
+async function deletePendente(numero) {
+  await supabase
+    .from('pendentes_confirmacao')
+    .delete()
+    .eq('numero', numero);
 }
 
 // ── Lembretes ────────────────────────────────────────────────
@@ -106,7 +130,6 @@ async function inserirLembrete(dados) {
     .insert([dados])
     .select()
     .single();
-
   if (error) throw error;
   return data;
 }
@@ -117,7 +140,6 @@ async function buscarLembretesVencidos() {
     .select('*')
     .eq('enviado', false)
     .lte('data_hora', new Date().toISOString());
-
   if (error) throw error;
   return data;
 }
@@ -127,7 +149,6 @@ async function marcarLembreteEnviado(id) {
     .from('lembretes')
     .update({ enviado: true })
     .eq('id', id);
-
   if (error) throw error;
 }
 
@@ -139,22 +160,15 @@ async function buscarProximosLembretes() {
     .gte('data_hora', new Date().toISOString())
     .order('data_hora', { ascending: true })
     .limit(5);
-
   if (error) throw error;
   return data;
 }
 
-// ── Helpers de cálculo ───────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────
 
 function calcularResumo(transacoes) {
-  const receitas = transacoes
-    .filter(t => t.tipo === 'receita')
-    .reduce((s, t) => s + Number(t.valor), 0);
-
-  const despesas = transacoes
-    .filter(t => t.tipo === 'despesa')
-    .reduce((s, t) => s + Number(t.valor), 0);
-
+  const receitas = transacoes.filter(t => t.tipo === 'receita').reduce((s, t) => s + Number(t.valor), 0);
+  const despesas = transacoes.filter(t => t.tipo === 'despesa').reduce((s, t) => s + Number(t.valor), 0);
   return { receitas, despesas, saldo: receitas - despesas };
 }
 
@@ -170,19 +184,11 @@ function calcularPorCategoria(transacoes) {
 
 module.exports = {
   supabase,
-  inserirTransacao,
-  confirmarTransacao,
-  buscarTransacoesPeriodo,
-  buscarTransacoesHoje,
-  buscarTransacoesSemana,
-  buscarTransacoesMes,
-  buscarTransacoesOntem,
-  buscarTransacoesSemanaPassada,
+  inserirTransacao, confirmarTransacao,
+  buscarTransacoesPeriodo, buscarTransacoesHoje, buscarTransacoesSemana,
+  buscarTransacoesMes, buscarTransacoesOntem, buscarTransacoesSemanaPassada,
   buscarTransacoesMesPassado,
-  inserirLembrete,
-  buscarLembretesVencidos,
-  marcarLembreteEnviado,
-  buscarProximosLembretes,
-  calcularResumo,
-  calcularPorCategoria,
+  setPendente, getPendente, deletePendente,
+  inserirLembrete, buscarLembretesVencidos, marcarLembreteEnviado, buscarProximosLembretes,
+  calcularResumo, calcularPorCategoria,
 };

@@ -20,65 +20,57 @@ Contexto do Pedro:
 - Renda atual: ~R$4.550/mês fixo
 - Déficit mensal atual: ~R$6.900
 
-Regras de comportamento:
+Regras:
 1. Respostas curtas e diretas no WhatsApp
-2. Usar emojis com moderação
-3. Quando identificar gasto fora do planejado, alertar
-4. Sempre confirmar antes de salvar qualquer transação
-5. Nunca inventar valores — só registrar o que Pedro confirmar
-6. Se não entender a mensagem, perguntar de forma simples`;
+2. Emojis com moderação
+3. Alertar gastos fora do planejado
+4. Sempre confirmar antes de salvar
+5. Nunca inventar valores
+6. Se não entender, perguntar de forma simples`;
 
-// transações pendentes de confirmação por número
-const pendentes = new Map();
-
-// ── Helpers ──────────────────────────────────────────────────
-
-function formatarValor(v) {
+function fmt(v) {
   return Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
 }
 
-function formatarData(d) {
+function fmtData(d) {
   if (!d) return 'data não informada';
   return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
 }
 
-async function callOpenAI(userMsg, systemOverride = null) {
+async function callAI(userMsg, system = SYSTEM_PROMPT) {
   const res = await openai.chat.completions.create({
     model: MODEL,
     max_tokens: 512,
     messages: [
-      { role: 'system', content: systemOverride || SYSTEM_PROMPT },
+      { role: 'system', content: system },
       { role: 'user', content: userMsg },
     ],
   });
   return res.choices[0].message.content.trim();
 }
 
-async function extrairJSON(texto) {
-  const match = texto.match(/\{[\s\S]*\}/);
-  if (!match) return null;
-  try { return JSON.parse(match[0]); } catch { return null; }
+function extrairJSON(texto) {
+  const m = texto.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try { return JSON.parse(m[0]); } catch { return null; }
 }
 
-// ── 1. Imagem / Comprovante ──────────────────────────────────
+// ── 1. Imagem ────────────────────────────────────────────────
 
 async function processarImagem(remetente, mediaId) {
-  // Busca URL da mídia na Meta API
   const metaRes = await axios.get(
     `https://graph.facebook.com/v19.0/${mediaId}`,
     { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } }
   );
   const mediaUrl = metaRes.data.url;
 
-  // Baixa a imagem
   const imgRes = await axios.get(mediaUrl, {
     responseType: 'arraybuffer',
     headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` },
   });
   const base64 = Buffer.from(imgRes.data).toString('base64');
-  const mimeType = imgRes.headers['content-type'] || 'image/jpeg';
+  const mime = imgRes.headers['content-type'] || 'image/jpeg';
 
-  // Envia para OpenAI com vision
   const res = await openai.chat.completions.create({
     model: MODEL,
     max_tokens: 512,
@@ -87,32 +79,23 @@ async function processarImagem(remetente, mediaId) {
       {
         role: 'user',
         content: [
-          {
-            type: 'image_url',
-            image_url: { url: `data:${mimeType};base64,${base64}` },
-          },
+          { type: 'image_url', image_url: { url: `data:${mime};base64,${base64}` } },
           {
             type: 'text',
-            text: `Analise este comprovante/imagem financeira. Extraia:
-1. Valor (número apenas)
-2. Estabelecimento ou descrição
-3. Data (se visível, formato YYYY-MM-DD)
-4. Tipo: despesa ou receita
-5. Categoria sugerida entre: Moradia, Transporte, Alimentação, Saúde, Lazer, Vestuário, Assinaturas, Negócios, Dívidas, Outros
-Responda APENAS em JSON: {"valor": 0, "descricao": "", "data": "", "tipo": "", "categoria": ""}`,
+            text: 'Analise este comprovante. Extraia:\n1. Valor (número)\n2. Estabelecimento/descrição\n3. Data (YYYY-MM-DD)\n4. Tipo: despesa ou receita\n5. Categoria: Moradia, Transporte, Alimentação, Saúde, Lazer, Vestuário, Assinaturas, Negócios, Dívidas ou Outros\nResponda APENAS em JSON: {"valor":0,"descricao":"","data":"","tipo":"","categoria":""}',
           },
         ],
       },
     ],
   });
 
-  const json = await extrairJSON(res.choices[0].message.content);
+  const json = extrairJSON(res.choices[0].message.content);
   if (!json || !json.valor) {
-    await notificarPedro('❓ Não consegui identificar os dados financeiros nessa imagem. Pode me descrever a transação em texto?');
+    await notificarPedro('❓ Não identifiquei dados financeiros nessa imagem. Descreva em texto.');
     return;
   }
 
-  const transacao = await db.inserirTransacao({
+  const t = await db.inserirTransacao({
     data_transacao: json.data || new Date().toISOString().slice(0, 10),
     tipo: json.tipo || 'despesa',
     valor: json.valor,
@@ -122,36 +105,30 @@ Responda APENAS em JSON: {"valor": 0, "descricao": "", "data": "", "tipo": "", "
     confirmado: false,
   });
 
-  pendentes.set(remetente, transacao.id);
+  await db.setPendente(remetente, t.id);
 
-  const emoji = json.tipo === 'receita' ? '💰' : '💸';
+  const e = json.tipo === 'receita' ? '💰' : '💸';
   await notificarPedro(
-    `📄 Comprovante identificado:\n` +
-    `${emoji} Tipo: ${json.tipo}\n` +
-    `💵 Valor: R$ ${formatarValor(json.valor)}\n` +
-    `📝 Descrição: ${json.descricao}\n` +
-    `🏷️ Categoria: ${json.categoria}\n` +
-    `📅 Data: ${formatarData(json.data)}\n\n` +
-    `Confirma? Responda *sim* para salvar ou me diga o que corrigir.`
+    `📄 Comprovante identificado:\n${e} Tipo: ${json.tipo}\n💵 Valor: R$ ${fmt(json.valor)}\n📝 ${json.descricao}\n🏷️ ${json.categoria}\n📅 ${fmtData(json.data)}\n\nConfirma? Responda *sim* para salvar.`
   );
 }
 
-// ── 2. Registro manual por texto ─────────────────────────────
+// ── 2. Registro manual ───────────────────────────────────────
 
-const REGEX_REGISTRO = /\b(gastei|paguei|recebi|entrada de|despesa de|saída de|comprei)\b/i;
+const RE_REGISTRO = /\b(gastei|paguei|recebi|entrada de|despesa de|saída de|comprei)\b/i;
 
-async function processarRegistroTexto(remetente, mensagem) {
-  const resposta = await callOpenAI(
-    `O usuário disse: "${mensagem}"\nExtraia a transação financeira em JSON:\n{"valor": 0, "descricao": "", "tipo": "receita ou despesa", "categoria": "uma entre Moradia, Transporte, Alimentação, Saúde, Lazer, Vestuário, Assinaturas, Negócios, Dívidas, Outros"}\nSe não conseguir extrair, retorne {"erro": true}`
+async function processarRegistro(remetente, mensagem) {
+  const resp = await callAI(
+    `Usuário disse: "${mensagem}"\nExtraia em JSON: {"valor":0,"descricao":"","tipo":"receita ou despesa","categoria":"Moradia|Transporte|Alimentação|Saúde|Lazer|Vestuário|Assinaturas|Negócios|Dívidas|Outros"}\nSe não conseguir: {"erro":true}`
   );
 
-  const json = await extrairJSON(resposta);
+  const json = extrairJSON(resp);
   if (!json || json.erro || !json.valor) {
     await notificarPedro('❓ Não entendi. Tente: "gastei 50 de almoço" ou "recebi 200 de venda".');
     return;
   }
 
-  const transacao = await db.inserirTransacao({
+  const t = await db.inserirTransacao({
     data_transacao: new Date().toISOString().slice(0, 10),
     tipo: json.tipo || 'despesa',
     valor: json.valor,
@@ -160,48 +137,41 @@ async function processarRegistroTexto(remetente, mensagem) {
     confirmado: false,
   });
 
-  pendentes.set(remetente, transacao.id);
+  await db.setPendente(remetente, t.id);
 
-  const emoji = json.tipo === 'receita' ? '💰' : '💸';
+  const e = json.tipo === 'receita' ? '💰' : '💸';
   await notificarPedro(
-    `${emoji} Registrar:\n` +
-    `Tipo: ${json.tipo}\n` +
-    `Valor: R$ ${formatarValor(json.valor)}\n` +
-    `Descrição: ${json.descricao}\n` +
-    `Categoria: ${json.categoria}\n\n` +
-    `Confirma? Responda *sim* para salvar.`
+    `${e} Registrar:\nTipo: ${json.tipo}\nValor: R$ ${fmt(json.valor)}\nDescrição: ${json.descricao}\nCategoria: ${json.categoria}\n\nConfirma? Responda *sim* para salvar.`
   );
 }
 
 // ── 3. Confirmação ───────────────────────────────────────────
 
-const REGEX_CONFIRMAR = /^(sim|confirma|pode salvar|ok|isso|correto|certo|salva|salvar)\s*$/i;
+const RE_CONFIRMAR = /^(sim|confirma|pode salvar|ok|isso|correto|certo|salva|salvar)\s*$/i;
 
 async function processarConfirmacao(remetente) {
-  const id = pendentes.get(remetente);
+  const id = await db.getPendente(remetente);
   if (!id) {
-    await notificarPedro('Não há nenhuma transação pendente de confirmação.');
+    await notificarPedro('Não há transação pendente para confirmar.');
     return;
   }
-
   await db.confirmarTransacao(id);
-  pendentes.delete(remetente);
+  await db.deletePendente(remetente);
   await notificarPedro('✅ Salvo com sucesso!');
 }
 
-// ── 4. Lembretes / Agenda ─────────────────────────────────────
+// ── 4. Lembrete ──────────────────────────────────────────────
 
-const REGEX_LEMBRETE = /\b(me lembra|lembrete|reunião|todo dia|agenda|agendar|me avisa|avisa)\b/i;
+const RE_LEMBRETE = /\b(me lembra|lembrete|reunião|todo dia|agenda|agendar|me avisa|avisa)\b/i;
 
 async function processarLembrete(mensagem) {
-  const agora = new Date().toISOString();
-  const resposta = await callOpenAI(
-    `O usuário disse: "${mensagem}".\nData/hora atual: ${agora}.\nExtraia o lembrete em JSON:\n{"descricao": "", "data_hora": "ISO 8601", "recorrente": false, "frequencia": "diario|semanal|mensal|null"}\nSe não conseguir extrair, retorne {"erro": true}`
+  const resp = await callAI(
+    `Usuário disse: "${mensagem}"\nAgora: ${new Date().toISOString()}\nExtraia em JSON: {"descricao":"","data_hora":"ISO 8601","recorrente":false,"frequencia":"diario|semanal|mensal|null"}\nSe não conseguir: {"erro":true}`
   );
 
-  const json = await extrairJSON(resposta);
+  const json = extrairJSON(resp);
   if (!json || json.erro || !json.data_hora) {
-    await notificarPedro('❓ Não entendi o horário. Tente: "me lembra de academia amanhã às 7h".');
+    await notificarPedro('❓ Não entendi. Tente: "me lembra de academia amanhã às 7h".');
     return;
   }
 
@@ -212,148 +182,101 @@ async function processarLembrete(mensagem) {
     frequencia: json.frequencia || null,
   });
 
-  const dataFormatada = new Date(json.data_hora).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  const df = new Date(json.data_hora).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
   await notificarPedro(
-    `⏰ Lembrete criado!\n` +
-    `📝 ${json.descricao}\n` +
-    `📅 ${dataFormatada}` +
+    `⏰ Lembrete criado!\n📝 ${json.descricao}\n📅 ${df}` +
     (json.recorrente ? `\n🔁 Recorrente: ${json.frequencia}` : '')
   );
 }
 
-// ── 5. Consultas financeiras ──────────────────────────────────
+// ── 5. Consultas ─────────────────────────────────────────────
 
-const REGEX_CONSULTA = /\b(quanto gastei|qual.*saldo|despesas?|receitas?|resumo|saldo|extrato|quanto.*mês|gastos)\b/i;
+const RE_CONSULTA = /\b(quanto gastei|qual.*saldo|despesas?|receitas?|resumo|saldo|extrato|gastos)\b/i;
 
 async function processarConsulta(mensagem) {
-  let transacoes = [];
-  let periodo = 'mês atual';
+  let t, periodo;
 
   if (/hoje/i.test(mensagem)) {
-    transacoes = await db.buscarTransacoesHoje();
-    periodo = 'hoje';
+    t = await db.buscarTransacoesHoje(); periodo = 'hoje';
   } else if (/semana/i.test(mensagem)) {
-    transacoes = await db.buscarTransacoesSemana();
-    periodo = 'esta semana';
+    t = await db.buscarTransacoesSemana(); periodo = 'esta semana';
   } else {
-    transacoes = await db.buscarTransacoesMes();
-    periodo = 'este mês';
+    t = await db.buscarTransacoesMes(); periodo = 'este mês';
   }
 
-  const categorias = ['Moradia', 'Transporte', 'Alimentação', 'Saúde', 'Lazer', 'Vestuário', 'Assinaturas', 'Negócios', 'Dívidas'];
-  for (const cat of categorias) {
-    if (mensagem.toLowerCase().includes(cat.toLowerCase())) {
-      transacoes = transacoes.filter(t => t.categoria === cat);
-      periodo += ` (${cat})`;
+  const cats = ['Moradia','Transporte','Alimentação','Saúde','Lazer','Vestuário','Assinaturas','Negócios','Dívidas'];
+  for (const c of cats) {
+    if (mensagem.toLowerCase().includes(c.toLowerCase())) {
+      t = t.filter(tx => tx.categoria === c);
+      periodo += ` (${c})`;
       break;
     }
   }
 
-  const { receitas, despesas, saldo } = db.calcularResumo(transacoes);
+  if (!t.length) { await notificarPedro(`📊 Nenhuma transação para ${periodo}.`); return; }
 
-  if (transacoes.length === 0) {
-    await notificarPedro(`📊 Nenhuma transação registrada para ${periodo}.`);
-    return;
-  }
-
+  const { receitas, despesas, saldo } = db.calcularResumo(t);
   await notificarPedro(
-    `📊 Resumo — ${periodo}:\n\n` +
-    `💰 Receitas: R$ ${formatarValor(receitas)}\n` +
-    `💸 Despesas: R$ ${formatarValor(despesas)}\n` +
-    `📈 Saldo: R$ ${formatarValor(saldo)}\n\n` +
-    `(${transacoes.length} transações)`
+    `📊 ${periodo}:\n\n💰 Receitas: R$ ${fmt(receitas)}\n💸 Despesas: R$ ${fmt(despesas)}\n📈 Saldo: R$ ${fmt(saldo)}\n(${t.length} transações)`
   );
 }
 
-// ── 6. Comandos diretos ───────────────────────────────────────
+// ── 6. Comandos ──────────────────────────────────────────────
 
 async function processarComando(cmd) {
   switch (cmd) {
     case 'resumo': {
       const t = await db.buscarTransacoesMes();
       const { receitas, despesas, saldo } = db.calcularResumo(t);
-      await notificarPedro(
-        `📊 Resumo do mês:\n💰 Receitas: R$ ${formatarValor(receitas)}\n💸 Despesas: R$ ${formatarValor(despesas)}\n📈 Saldo: R$ ${formatarValor(saldo)}`
-      );
+      await notificarPedro(`📊 Mês atual:\n💰 Receitas: R$ ${fmt(receitas)}\n💸 Despesas: R$ ${fmt(despesas)}\n📈 Saldo: R$ ${fmt(saldo)}`);
       break;
     }
     case 'hoje': {
       const t = await db.buscarTransacoesHoje();
       if (!t.length) { await notificarPedro('Nenhuma transação hoje.'); break; }
-      const linhas = t.map(tx => `${tx.tipo === 'receita' ? '💰' : '💸'} R$ ${formatarValor(tx.valor)} — ${tx.descricao}`).join('\n');
-      await notificarPedro(`📅 Hoje:\n${linhas}`);
+      const l = t.map(tx => `${tx.tipo === 'receita' ? '💰' : '💸'} R$ ${fmt(tx.valor)} — ${tx.descricao}`).join('\n');
+      await notificarPedro(`📅 Hoje:\n${l}`);
       break;
     }
     case 'semana': {
       const t = await db.buscarTransacoesSemana();
       const { receitas, despesas, saldo } = db.calcularResumo(t);
-      await notificarPedro(
-        `📊 Esta semana:\n💰 Receitas: R$ ${formatarValor(receitas)}\n💸 Despesas: R$ ${formatarValor(despesas)}\n📈 Saldo: R$ ${formatarValor(saldo)}`
-      );
+      await notificarPedro(`📊 Esta semana:\n💰 Receitas: R$ ${fmt(receitas)}\n💸 Despesas: R$ ${fmt(despesas)}\n📈 Saldo: R$ ${fmt(saldo)}`);
       break;
     }
     case 'lembretes': {
       const l = await db.buscarProximosLembretes();
       if (!l.length) { await notificarPedro('Nenhum lembrete pendente.'); break; }
-      const linhas = l.map(r => `⏰ ${new Date(r.data_hora).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })} — ${r.descricao}`).join('\n');
-      await notificarPedro(`📋 Próximos lembretes:\n${linhas}`);
+      await notificarPedro('📋 Próximos lembretes:\n' + l.map(r => `⏰ ${new Date(r.data_hora).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })} — ${r.descricao}`).join('\n'));
       break;
     }
-    case 'ajuda':
     default:
       await notificarPedro(
-        `🤖 *Max — Comandos disponíveis:*\n\n` +
-        `*resumo* — Resumo do mês\n` +
-        `*hoje* — Transações de hoje\n` +
-        `*semana* — Transações da semana\n` +
-        `*lembretes* — Próximos lembretes\n` +
-        `*ajuda* — Esta mensagem\n\n` +
-        `Ou me diga naturalmente:\n` +
-        `"gastei 50 de almoço"\n` +
-        `"recebi 500 de venda"\n` +
-        `"me lembra de academia amanhã às 7h"\n` +
-        `"quanto gastei este mês com Alimentação?"`
+        `🤖 *Max — Comandos:*\n\n*resumo* — Resumo do mês\n*hoje* — Transações de hoje\n*semana* — Transações da semana\n*lembretes* — Próximos lembretes\n*ajuda* — Esta mensagem\n\nOu naturalmente:\n"gastei 50 de almoço"\n"recebi 500 de venda"\n"me lembra de reunião amanhã às 10h"\n"quanto gastei com Alimentação?"`
       );
   }
 }
 
-// ── Dispatcher principal ─────────────────────────────────────
+// ── Dispatcher ───────────────────────────────────────────────
 
 async function processarMensagem(remetente, mensagem, tipo, mediaId) {
   try {
-    if (tipo === 'image' && mediaId) {
-      return await processarImagem(remetente, mediaId);
-    }
+    if (tipo === 'image' && mediaId) return await processarImagem(remetente, mediaId);
 
-    const texto = (mensagem || '').trim();
-    const cmdLimpo = texto.toLowerCase().replace(/[^a-záéíóúãõ]/g, '');
+    const txt = (mensagem || '').trim();
+    const cmd = txt.toLowerCase().replace(/[^a-záéíóúãõ]/g, '');
 
-    if (REGEX_CONFIRMAR.test(texto)) {
-      return await processarConfirmacao(remetente);
-    }
+    if (RE_CONFIRMAR.test(txt)) return await processarConfirmacao(remetente);
+    if (['resumo','hoje','semana','lembretes','ajuda'].includes(cmd)) return await processarComando(cmd);
+    if (RE_LEMBRETE.test(txt)) return await processarLembrete(txt);
+    if (RE_CONSULTA.test(txt)) return await processarConsulta(txt);
+    if (RE_REGISTRO.test(txt)) return await processarRegistro(remetente, txt);
 
-    if (['resumo', 'hoje', 'semana', 'lembretes', 'ajuda'].includes(cmdLimpo)) {
-      return await processarComando(cmdLimpo);
-    }
-
-    if (REGEX_LEMBRETE.test(texto)) {
-      return await processarLembrete(texto);
-    }
-
-    if (REGEX_CONSULTA.test(texto)) {
-      return await processarConsulta(texto);
-    }
-
-    if (REGEX_REGISTRO.test(texto)) {
-      return await processarRegistroTexto(remetente, texto);
-    }
-
-    // Fallback: conversa geral com o Max
-    const resposta = await callOpenAI(texto);
+    const resposta = await callAI(txt);
     await notificarPedro(resposta);
   } catch (err) {
-    console.error('[Max] Erro ao processar mensagem:', err.message);
-    await notificarPedro('⚠️ Ocorreu um erro interno. Tente novamente em instantes.');
+    console.error('[Max] Erro:', err.message);
+    await notificarPedro('⚠️ Erro interno. Tente novamente.');
   }
 }
 
