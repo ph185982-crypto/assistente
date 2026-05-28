@@ -5,7 +5,7 @@ const { processarMensagem } = require('./max/assistente');
 const { processarMensagemVendedoria } = require('./vendedoria');
 
 const router = express.Router();
-const MEU_NUMERO = process.env.MEU_NUMERO || '5562991526593';
+const MEU_NUMERO = process.env.MEU_NUMERO || '5562984465388';
 
 // ── Verificação do webhook (GET) ─────────────────────────────
 router.get('/', (req, res) => {
