@@ -1,12 +1,12 @@
 'use strict';
 require('dotenv').config();
 const axios = require('axios');
-const Anthropic = require('@anthropic-ai/sdk');
+const OpenAI = require('openai');
 const { notificarPedro } = require('./whatsapp');
 const db = require('./supabase');
 
-const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const MODEL = 'claude-sonnet-4-6';
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const MODEL = 'gpt-4o';
 
 const SYSTEM_PROMPT = `Você é Max, assistente financeiro pessoal do Pedro.
 Personalidade: direto, objetivo, sem enrolação.
@@ -42,14 +42,16 @@ function formatarData(d) {
   return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
 }
 
-async function callClaude(userMsg, systemOverride = null) {
-  const res = await claude.messages.create({
+async function callOpenAI(userMsg, systemOverride = null) {
+  const res = await openai.chat.completions.create({
     model: MODEL,
     max_tokens: 512,
-    system: systemOverride || SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: userMsg }],
+    messages: [
+      { role: 'system', content: systemOverride || SYSTEM_PROMPT },
+      { role: 'user', content: userMsg },
+    ],
   });
-  return res.content[0].text.trim();
+  return res.choices[0].message.content.trim();
 }
 
 async function extrairJSON(texto) {
@@ -76,18 +78,18 @@ async function processarImagem(remetente, mediaId) {
   const base64 = Buffer.from(imgRes.data).toString('base64');
   const mimeType = imgRes.headers['content-type'] || 'image/jpeg';
 
-  // Envia para Claude com vision
-  const res = await claude.messages.create({
+  // Envia para OpenAI com vision
+  const res = await openai.chat.completions.create({
     model: MODEL,
     max_tokens: 512,
-    system: SYSTEM_PROMPT,
     messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
       {
         role: 'user',
         content: [
           {
-            type: 'image',
-            source: { type: 'base64', media_type: mimeType, data: base64 },
+            type: 'image_url',
+            image_url: { url: `data:${mimeType};base64,${base64}` },
           },
           {
             type: 'text',
@@ -104,7 +106,7 @@ Responda APENAS em JSON: {"valor": 0, "descricao": "", "data": "", "tipo": "", "
     ],
   });
 
-  const json = await extrairJSON(res.content[0].text);
+  const json = await extrairJSON(res.choices[0].message.content);
   if (!json || !json.valor) {
     await notificarPedro('❓ Não consegui identificar os dados financeiros nessa imagem. Pode me descrever a transação em texto?');
     return;
@@ -139,7 +141,7 @@ Responda APENAS em JSON: {"valor": 0, "descricao": "", "data": "", "tipo": "", "
 const REGEX_REGISTRO = /\b(gastei|paguei|recebi|entrada de|despesa de|saída de|comprei)\b/i;
 
 async function processarRegistroTexto(remetente, mensagem) {
-  const resposta = await callClaude(
+  const resposta = await callOpenAI(
     `O usuário disse: "${mensagem}"\nExtraia a transação financeira em JSON:\n{"valor": 0, "descricao": "", "tipo": "receita ou despesa", "categoria": "uma entre Moradia, Transporte, Alimentação, Saúde, Lazer, Vestuário, Assinaturas, Negócios, Dívidas, Outros"}\nSe não conseguir extrair, retorne {"erro": true}`
   );
 
@@ -193,7 +195,7 @@ const REGEX_LEMBRETE = /\b(me lembra|lembrete|reunião|todo dia|agenda|agendar|m
 
 async function processarLembrete(mensagem) {
   const agora = new Date().toISOString();
-  const resposta = await callClaude(
+  const resposta = await callOpenAI(
     `O usuário disse: "${mensagem}".\nData/hora atual: ${agora}.\nExtraia o lembrete em JSON:\n{"descricao": "", "data_hora": "ISO 8601", "recorrente": false, "frequencia": "diario|semanal|mensal|null"}\nSe não conseguir extrair, retorne {"erro": true}`
   );
 
@@ -238,7 +240,6 @@ async function processarConsulta(mensagem) {
     periodo = 'este mês';
   }
 
-  // Filtrar por categoria se mencionada
   const categorias = ['Moradia', 'Transporte', 'Alimentação', 'Saúde', 'Lazer', 'Vestuário', 'Assinaturas', 'Negócios', 'Dívidas'];
   for (const cat of categorias) {
     if (mensagem.toLowerCase().includes(cat.toLowerCase())) {
@@ -327,37 +328,32 @@ async function processarMensagem(remetente, mensagem, tipo, mediaId) {
     const texto = (mensagem || '').trim();
     const cmdLimpo = texto.toLowerCase().replace(/[^a-záéíóúãõ]/g, '');
 
-    // Confirmação
     if (REGEX_CONFIRMAR.test(texto)) {
       return await processarConfirmacao(remetente);
     }
 
-    // Comandos diretos
     if (['resumo', 'hoje', 'semana', 'lembretes', 'ajuda'].includes(cmdLimpo)) {
       return await processarComando(cmdLimpo);
     }
 
-    // Lembrete / agenda
     if (REGEX_LEMBRETE.test(texto)) {
       return await processarLembrete(texto);
     }
 
-    // Consulta financeira
     if (REGEX_CONSULTA.test(texto)) {
       return await processarConsulta(texto);
     }
 
-    // Registro manual
     if (REGEX_REGISTRO.test(texto)) {
       return await processarRegistroTexto(remetente, texto);
     }
 
     // Fallback: conversa geral com o Max
-    const resposta = await callClaude(texto);
+    const resposta = await callOpenAI(texto);
     await notificarPedro(resposta);
   } catch (err) {
     console.error('[Max] Erro ao processar mensagem:', err.message);
-    await notificarPedro('⚠️ Ocorreu um erro interno. Tente novamente.');
+    await notificarPedro('⚠️ Ocorreu um erro interno. Tente novamente em instantes.');
   }
 }
 
