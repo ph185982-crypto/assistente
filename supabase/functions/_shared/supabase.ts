@@ -5,6 +5,23 @@ export const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 );
 
+// ── Normaliza número BR (lida com 12 e 13 dígitos) ──────────
+export function normalizarNumero(num: string): string {
+  // Remove não-dígitos
+  const d = num.replace(/\D/g, '');
+  // Brasil: 55 + DDD(2) + 9 + 8 dígitos = 13 dígitos
+  // Versão antiga: 55 + DDD(2) + 8 dígitos = 12 dígitos
+  // Normaliza para 13 dígitos adicionando o 9 se necessário
+  if (d.startsWith('55') && d.length === 12) {
+    return '55' + d.slice(2, 4) + '9' + d.slice(4);
+  }
+  return d;
+}
+
+export function numerosIguais(a: string, b: string): boolean {
+  return normalizarNumero(a) === normalizarNumero(b);
+}
+
 // ── Transações ───────────────────────────────────────────────
 
 export async function inserirTransacao(dados: Record<string, unknown>) {
@@ -21,17 +38,27 @@ export async function confirmarTransacao(id: string) {
 
 export async function buscarTransacoesPeriodo(inicio: string, fim: string, categoria?: string) {
   let q = supabase.from('transacoes').select('*').eq('confirmado', true)
-    .gte('data_transacao', inicio).lte('data_transacao', fim).order('data_transacao', { ascending: false });
+    .gte('data_transacao', inicio).lte('data_transacao', fim)
+    .order('data_transacao', { ascending: false });
   if (categoria) q = q.eq('categoria', categoria);
   const { data, error } = await q;
   if (error) throw error;
   return data ?? [];
 }
 
-function hojeStr() { return new Date().toISOString().slice(0, 10); }
-
 export async function buscarTransacoesHoje() {
-  const h = hojeStr(); return buscarTransacoesPeriodo(h, h);
+  const h = new Date().toISOString().slice(0, 10);
+  return buscarTransacoesPeriodo(h, h);
+}
+
+export async function buscarTransacoesSemana() {
+  const hoje = new Date();
+  const inicio = new Date(hoje);
+  inicio.setDate(hoje.getDate() - hoje.getDay());
+  return buscarTransacoesPeriodo(
+    inicio.toISOString().slice(0, 10),
+    hoje.toISOString().slice(0, 10)
+  );
 }
 
 export async function buscarTransacoesMes(mes?: string) {
@@ -64,17 +91,19 @@ export async function buscarTransacoesMesPassado() {
 // ── Pendentes ────────────────────────────────────────────────
 
 export async function setPendente(numero: string, transacaoId: string) {
-  const { error } = await supabase.from('pendentes_confirmacao').upsert([{ numero, transacao_id: transacaoId }]);
+  const { error } = await supabase.from('pendentes_confirmacao')
+    .upsert([{ numero: normalizarNumero(numero), transacao_id: transacaoId }]);
   if (error) throw error;
 }
 
 export async function getPendente(numero: string): Promise<string | null> {
-  const { data } = await supabase.from('pendentes_confirmacao').select('transacao_id').eq('numero', numero).single();
+  const { data } = await supabase.from('pendentes_confirmacao')
+    .select('transacao_id').eq('numero', normalizarNumero(numero)).single();
   return data?.transacao_id ?? null;
 }
 
 export async function deletePendente(numero: string) {
-  await supabase.from('pendentes_confirmacao').delete().eq('numero', numero);
+  await supabase.from('pendentes_confirmacao').delete().eq('numero', normalizarNumero(numero));
 }
 
 // ── Lembretes ────────────────────────────────────────────────

@@ -5,11 +5,11 @@ import {
   inserirTransacao, confirmarTransacao, inserirLembrete,
   setPendente, getPendente, deletePendente,
   buscarTransacoesHoje, buscarTransacoesSemana, buscarTransacoesMes,
-  buscarProximosLembretes, calcularResumo, fmt,
+  buscarProximosLembretes, calcularResumo, fmt, numerosIguais,
 } from '../_shared/supabase.ts';
 
-const MEU_NUMERO   = Deno.env.get('MEU_NUMERO')!;
-const VERIFY_TOKEN = Deno.env.get('VERIFY_TOKEN')!;
+const MEU_NUMERO   = Deno.env.get('MEU_NUMERO') ?? '5562984465388';
+const VERIFY_TOKEN = Deno.env.get('VERIFY_TOKEN') ?? 'max_webhook_2025';
 const WA_TOKEN     = Deno.env.get('WHATSAPP_TOKEN')!;
 
 // ── Imagem ───────────────────────────────────────────────────
@@ -20,10 +20,10 @@ async function processarImagem(remetente: string, mediaId: string) {
   });
   const { url: mediaUrl } = await metaRes.json();
 
-  const imgRes = await fetch(mediaUrl, { headers: { Authorization: `Bearer ${WA_TOKEN}` } });
-  const buf    = await imgRes.arrayBuffer();
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
-  const mime   = imgRes.headers.get('content-type') ?? 'image/jpeg';
+  const imgRes  = await fetch(mediaUrl, { headers: { Authorization: `Bearer ${WA_TOKEN}` } });
+  const buf     = await imgRes.arrayBuffer();
+  const base64  = btoa(String.fromCharCode(...new Uint8Array(buf)));
+  const mime    = imgRes.headers.get('content-type') ?? 'image/jpeg';
 
   const texto = await callOpenAI([
     { role: 'system', content: SYSTEM_PROMPT },
@@ -36,7 +36,10 @@ async function processarImagem(remetente: string, mediaId: string) {
   ]);
 
   const json = extrairJSON(texto);
-  if (!json?.valor) { await notificarPedro('❓ Não identifiquei dados financeiros. Descreva em texto.'); return; }
+  if (!json?.valor) {
+    await notificarPedro('❓ Não identifiquei dados financeiros. Descreva em texto.');
+    return;
+  }
 
   const t = await inserirTransacao({
     data_transacao: (json.data as string) || new Date().toISOString().slice(0, 10),
@@ -47,25 +50,32 @@ async function processarImagem(remetente: string, mediaId: string) {
 
   await setPendente(remetente, t.id);
   const e = json.tipo === 'receita' ? '💰' : '💸';
-  await notificarPedro(`📄 Comprovante identificado:\n${e} Tipo: ${json.tipo}\n💵 Valor: R$ ${fmt(Number(json.valor))}\n📝 ${json.descricao}\n🏷️ ${json.categoria}\n\nConfirma? Responda *sim* para salvar.`);
+  await notificarPedro(
+    `📄 Comprovante identificado:\n${e} Tipo: ${json.tipo}\n💵 Valor: R$ ${fmt(Number(json.valor))}\n📝 ${json.descricao}\n🏷️ ${json.categoria}\n\nConfirma? Responda *sim* para salvar.`
+  );
 }
 
 // ── Registro texto ───────────────────────────────────────────
 
 async function processarRegistro(remetente: string, mensagem: string) {
-  const resp = await callAI(`Usuário disse: "${mensagem}"\nExtraia em JSON: {"valor":0,"descricao":"","tipo":"receita ou despesa","categoria":"Moradia|Transporte|Alimentação|Saúde|Lazer|Vestuário|Assinaturas|Negócios|Dívidas|Outros"}\nSe não conseguir: {"erro":true}`);
+  const resp = await callAI(
+    `Usuário disse: "${mensagem}"\nExtraia em JSON: {"valor":0,"descricao":"","tipo":"receita ou despesa","categoria":"Moradia|Transporte|Alimentação|Saúde|Lazer|Vestuário|Assinaturas|Negócios|Dívidas|Outros"}\nSe não conseguir: {"erro":true}`
+  );
   const json = extrairJSON(resp);
-  if (!json || json.erro || !json.valor) { await notificarPedro('❓ Não entendi. Tente: "gastei 50 de almoço".'); return; }
-
+  if (!json || json.erro || !json.valor) {
+    await notificarPedro('❓ Não entendi. Tente: "gastei 50 de almoço".');
+    return;
+  }
   const t = await inserirTransacao({
     data_transacao: new Date().toISOString().slice(0, 10),
     tipo: json.tipo ?? 'despesa', valor: json.valor,
     descricao: json.descricao, categoria: json.categoria, confirmado: false,
   });
-
   await setPendente(remetente, t.id);
   const e = json.tipo === 'receita' ? '💰' : '💸';
-  await notificarPedro(`${e} Registrar:\nTipo: ${json.tipo}\nValor: R$ ${fmt(Number(json.valor))}\nDescrição: ${json.descricao}\nCategoria: ${json.categoria}\n\nConfirma? Responda *sim* para salvar.`);
+  await notificarPedro(
+    `${e} Registrar:\nTipo: ${json.tipo}\nValor: R$ ${fmt(Number(json.valor))}\nDescrição: ${json.descricao}\nCategoria: ${json.categoria}\n\nConfirma? Responda *sim* para salvar.`
+  );
 }
 
 // ── Confirmação ──────────────────────────────────────────────
@@ -81,10 +91,14 @@ async function processarConfirmacao(remetente: string) {
 // ── Lembrete ─────────────────────────────────────────────────
 
 async function processarLembrete(mensagem: string) {
-  const resp = await callAI(`Usuário disse: "${mensagem}"\nAgora: ${new Date().toISOString()}\nExtraia em JSON: {"descricao":"","data_hora":"ISO 8601","recorrente":false,"frequencia":"diario|semanal|mensal|null"}\nSe não conseguir: {"erro":true}`);
+  const resp = await callAI(
+    `Usuário disse: "${mensagem}"\nAgora: ${new Date().toISOString()}\nExtraia em JSON: {"descricao":"","data_hora":"ISO 8601","recorrente":false,"frequencia":"diario|semanal|mensal|null"}\nSe não conseguir: {"erro":true}`
+  );
   const json = extrairJSON(resp);
-  if (!json || json.erro || !json.data_hora) { await notificarPedro('❓ Não entendi. Tente: "me lembra de reunião amanhã às 10h".'); return; }
-
+  if (!json || json.erro || !json.data_hora) {
+    await notificarPedro('❓ Não entendi. Tente: "me lembra de reunião amanhã às 10h".');
+    return;
+  }
   await inserirLembrete({ descricao: json.descricao, data_hora: json.data_hora, recorrente: json.recorrente ?? false, frequencia: json.frequencia ?? null });
   const df = new Date(json.data_hora as string).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
   await notificarPedro(`⏰ Lembrete criado!\n📝 ${json.descricao}\n📅 ${df}${json.recorrente ? `\n🔁 ${json.frequencia}` : ''}`);
@@ -93,10 +107,17 @@ async function processarLembrete(mensagem: string) {
 // ── Consulta ─────────────────────────────────────────────────
 
 async function processarConsulta(mensagem: string) {
-  let t, periodo: string;
-  if (/hoje/i.test(mensagem))   { t = await buscarTransacoesHoje();   periodo = 'hoje'; }
-  else if (/semana/i.test(mensagem)) { t = await (await import('../_shared/supabase.ts')).buscarTransacoesSemana?.() ?? []; periodo = 'esta semana'; }
-  else                           { t = await buscarTransacoesMes();    periodo = 'este mês'; }
+  let t: Record<string, unknown>[], periodo: string;
+  if (/hoje/i.test(mensagem))        { t = await buscarTransacoesHoje();   periodo = 'hoje'; }
+  else if (/semana/i.test(mensagem)) { t = await buscarTransacoesSemana(); periodo = 'esta semana'; }
+  else                               { t = await buscarTransacoesMes();    periodo = 'este mês'; }
+
+  const cats = ['Moradia','Transporte','Alimentação','Saúde','Lazer','Vestuário','Assinaturas','Negócios','Dívidas'];
+  for (const c of cats) {
+    if (mensagem.toLowerCase().includes(c.toLowerCase())) {
+      t = t.filter(x => x.categoria === c); periodo += ` (${c})`; break;
+    }
+  }
 
   if (!t.length) { await notificarPedro(`📊 Nenhuma transação para ${periodo}.`); return; }
   const { receitas, despesas, saldo } = calcularResumo(t);
@@ -106,16 +127,28 @@ async function processarConsulta(mensagem: string) {
 // ── Comandos ─────────────────────────────────────────────────
 
 async function processarComando(cmd: string) {
-  if (cmd === 'resumo' || cmd === 'semana' || cmd === 'hoje') {
-    const t = cmd === 'hoje' ? await buscarTransacoesHoje() : await buscarTransacoesMes();
+  if (cmd === 'resumo') {
+    const t = await buscarTransacoesMes();
     const { receitas, despesas, saldo } = calcularResumo(t);
-    await notificarPedro(`📊 ${cmd === 'hoje' ? 'Hoje' : cmd === 'semana' ? 'Semana' : 'Mês'}:\n💰 R$ ${fmt(receitas)}\n💸 R$ ${fmt(despesas)}\n📈 R$ ${fmt(saldo)}`);
+    await notificarPedro(`📊 Mês atual:\n💰 R$ ${fmt(receitas)}\n💸 R$ ${fmt(despesas)}\n📈 R$ ${fmt(saldo)}`);
+  } else if (cmd === 'hoje') {
+    const t = await buscarTransacoesHoje();
+    if (!t.length) { await notificarPedro('Nenhuma transação hoje.'); return; }
+    await notificarPedro('📅 Hoje:\n' + t.map((x: Record<string, unknown>) => `${x.tipo === 'receita' ? '💰' : '💸'} R$ ${fmt(Number(x.valor))} — ${x.descricao}`).join('\n'));
+  } else if (cmd === 'semana') {
+    const t = await buscarTransacoesSemana();
+    const { receitas, despesas, saldo } = calcularResumo(t);
+    await notificarPedro(`📊 Esta semana:\n💰 R$ ${fmt(receitas)}\n💸 R$ ${fmt(despesas)}\n📈 R$ ${fmt(saldo)}`);
   } else if (cmd === 'lembretes') {
     const l = await buscarProximosLembretes();
     if (!l.length) { await notificarPedro('Nenhum lembrete pendente.'); return; }
-    await notificarPedro('📋 Próximos:\n' + l.map((r: Record<string, unknown>) => `⏰ ${new Date(r.data_hora as string).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })} — ${r.descricao}`).join('\n'));
+    await notificarPedro('📋 Próximos:\n' + l.map((r: Record<string, unknown>) =>
+      `⏰ ${new Date(r.data_hora as string).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })} — ${r.descricao}`
+    ).join('\n'));
   } else {
-    await notificarPedro(`🤖 *Max — Comandos:*\n\n*resumo* — Resumo do mês\n*hoje* — Transações de hoje\n*semana* — Semana atual\n*lembretes* — Próximos lembretes\n*ajuda* — Esta mensagem\n\nOu naturalmente:\n"gastei 50 de almoço"\n"recebi 500 de venda"\n"me lembra de reunião amanhã às 10h"`);
+    await notificarPedro(
+      `🤖 *Max — Comandos:*\n\n*resumo* — Resumo do mês\n*hoje* — Transações de hoje\n*semana* — Semana atual\n*lembretes* — Próximos lembretes\n*ajuda* — Esta mensagem\n\nOu naturalmente:\n"gastei 50 de almoço"\n"recebi 500 de venda"\n"me lembra de reunião amanhã às 10h"\n"quanto gastei com Alimentação?"`
+    );
   }
 }
 
@@ -138,7 +171,7 @@ async function processarMensagem(remetente: string, mensagem: string | null, tip
     await notificarPedro(resposta);
   } catch (err) {
     console.error('[Max] Erro:', err);
-    await notificarPedro('⚠️ Erro interno. Tente novamente.');
+    try { await notificarPedro('⚠️ Erro interno. Tente novamente.'); } catch { /* ignore */ }
   }
 }
 
@@ -158,17 +191,18 @@ serve(async (req) => {
     return new Response('Forbidden', { status: 403 });
   }
 
-  // POST — mensagem
+  // POST — mensagem recebida
   if (req.method === 'POST') {
     const body = await req.json().catch(() => ({}));
     const msg  = body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
-    if (msg && msg.from === MEU_NUMERO) {
+    if (msg && numerosIguais(msg.from, MEU_NUMERO)) {
       const tipo    = msg.type;
       const texto   = tipo === 'text'  ? msg.text?.body  : null;
       const mediaId = tipo === 'image' ? msg.image?.id   : null;
-      // Processa em background, responde 200 imediatamente
-      processarMensagem(msg.from, texto, tipo, mediaId);
+
+      // AGUARDA processamento antes de retornar (corrige bug do fire-and-forget)
+      await processarMensagem(msg.from, texto, tipo, mediaId);
     }
 
     return new Response(JSON.stringify({ ok: true }), {
