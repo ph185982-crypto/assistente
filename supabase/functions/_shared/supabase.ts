@@ -5,21 +5,45 @@ export const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 );
 
-// ── Normaliza número BR (lida com 12 e 13 dígitos) ──────────
+// ── Números ──────────────────────────────────────────────────
+
 export function normalizarNumero(num: string): string {
-  // Remove não-dígitos
   const d = num.replace(/\D/g, '');
-  // Brasil: 55 + DDD(2) + 9 + 8 dígitos = 13 dígitos
-  // Versão antiga: 55 + DDD(2) + 8 dígitos = 12 dígitos
-  // Normaliza para 13 dígitos adicionando o 9 se necessário
-  if (d.startsWith('55') && d.length === 12) {
-    return '55' + d.slice(2, 4) + '9' + d.slice(4);
-  }
+  if (d.startsWith('55') && d.length === 12) return '55' + d.slice(2, 4) + '9' + d.slice(4);
   return d;
 }
 
-export function numerosIguais(a: string, b: string): boolean {
+export function numerosIguais(a: string, b: string) {
   return normalizarNumero(a) === normalizarNumero(b);
+}
+
+// ── Conversa (memória) ───────────────────────────────────────
+
+export async function salvarMensagem(numero: string, role: 'user' | 'assistant', content: string) {
+  await supabase.from('conversas').insert([{ numero: normalizarNumero(numero), role, content }]);
+}
+
+export async function buscarHistorico(numero: string, limite = 20) {
+  const { data } = await supabase
+    .from('conversas')
+    .select('role, content')
+    .eq('numero', normalizarNumero(numero))
+    .order('criado_em', { ascending: false })
+    .limit(limite);
+  return (data ?? []).reverse();
+}
+
+// ── Contexto / Memória sobre Pedro ───────────────────────────
+
+export async function salvarContexto(chave: string, valor: string, categoria = 'geral') {
+  await supabase.from('contexto_pedro').upsert([{
+    chave, valor, categoria, atualizado_em: new Date().toISOString()
+  }]);
+}
+
+export async function buscarTodoContexto() {
+  const { data } = await supabase.from('contexto_pedro').select('*').order('categoria');
+  return data ?? [];
 }
 
 // ── Transações ───────────────────────────────────────────────
@@ -36,11 +60,17 @@ export async function confirmarTransacao(id: string) {
   if (error) throw error;
 }
 
-export async function buscarTransacoesPeriodo(inicio: string, fim: string, categoria?: string) {
+export async function cancelarTransacao(id: string) {
+  const { error } = await supabase.from('transacoes').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function buscarTransacoesPeriodo(inicio: string, fim: string, filtros?: { categoria?: string; tipo_negocio?: string }) {
   let q = supabase.from('transacoes').select('*').eq('confirmado', true)
     .gte('data_transacao', inicio).lte('data_transacao', fim)
     .order('data_transacao', { ascending: false });
-  if (categoria) q = q.eq('categoria', categoria);
+  if (filtros?.categoria) q = q.eq('categoria', filtros.categoria);
+  if (filtros?.tipo_negocio) q = q.eq('tipo_negocio', filtros.tipo_negocio);
   const { data, error } = await q;
   if (error) throw error;
   return data ?? [];
@@ -53,12 +83,8 @@ export async function buscarTransacoesHoje() {
 
 export async function buscarTransacoesSemana() {
   const hoje = new Date();
-  const inicio = new Date(hoje);
-  inicio.setDate(hoje.getDate() - hoje.getDay());
-  return buscarTransacoesPeriodo(
-    inicio.toISOString().slice(0, 10),
-    hoje.toISOString().slice(0, 10)
-  );
+  const inicio = new Date(hoje); inicio.setDate(hoje.getDate() - hoje.getDay());
+  return buscarTransacoesPeriodo(inicio.toISOString().slice(0, 10), hoje.toISOString().slice(0, 10));
 }
 
 export async function buscarTransacoesMes(mes?: string) {
@@ -91,12 +117,11 @@ export async function buscarTransacoesMesPassado() {
 // ── Pendentes ────────────────────────────────────────────────
 
 export async function setPendente(numero: string, transacaoId: string) {
-  const { error } = await supabase.from('pendentes_confirmacao')
+  await supabase.from('pendentes_confirmacao')
     .upsert([{ numero: normalizarNumero(numero), transacao_id: transacaoId }]);
-  if (error) throw error;
 }
 
-export async function getPendente(numero: string): Promise<string | null> {
+export async function getPendente(numero: string) {
   const { data } = await supabase.from('pendentes_confirmacao')
     .select('transacao_id').eq('numero', normalizarNumero(numero)).single();
   return data?.transacao_id ?? null;
@@ -115,22 +140,19 @@ export async function inserirLembrete(dados: Record<string, unknown>) {
 }
 
 export async function buscarLembretesVencidos() {
-  const { data, error } = await supabase.from('lembretes').select('*')
+  const { data } = await supabase.from('lembretes').select('*')
     .eq('enviado', false).lte('data_hora', new Date().toISOString());
-  if (error) throw error;
   return data ?? [];
 }
 
 export async function marcarLembreteEnviado(id: string) {
-  const { error } = await supabase.from('lembretes').update({ enviado: true }).eq('id', id);
-  if (error) throw error;
+  await supabase.from('lembretes').update({ enviado: true }).eq('id', id);
 }
 
 export async function buscarProximosLembretes() {
-  const { data, error } = await supabase.from('lembretes').select('*')
+  const { data } = await supabase.from('lembretes').select('*')
     .eq('enviado', false).gte('data_hora', new Date().toISOString())
     .order('data_hora', { ascending: true }).limit(5);
-  if (error) throw error;
   return data ?? [];
 }
 
