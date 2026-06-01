@@ -113,9 +113,10 @@ const TOOLS = [
 // ── System prompt dinâmico ───────────────────────────────────
 
 async function buildSystemPrompt(): Promise<string> {
-  const [transacoesMes, lembretes] = await Promise.all([
+  const [transacoesMes, lembretes, contexto] = await Promise.all([
     buscarTransacoesMes(),
     buscarProximosLembretes(),
+    buscarTodoContexto(),
   ]);
 
   const { receitas, despesas, saldo } = calcularResumo(transacoesMes);
@@ -156,7 +157,7 @@ Despesas fixas ~R$7.504/mês. Déficit atual ~-R$6.900/mês sem receita dos neg�
 Dívidas (~R$90.200): Adijo R$300 (NOME SUJO, prioridade 1), Americanas R$6k, CNPJ esposa R$8k, Mercado Pago R$20k, Infinity Pay R$14k, Condomínio R$4.2k, MRV R$30k, Caixa R$2.7k.
 
 30 vendas/mês Vendedoria = para de afundar. 50 = começa a pagar dívida.
-
+${contexto.length ? `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nMEMÓRIA ATUALIZADA\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${contexto.map(c => `${c.chave}: ${c.valor}`).join('\n')}` : ''}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SALDO ${new Date().toLocaleString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase()}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
