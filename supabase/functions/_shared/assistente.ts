@@ -18,7 +18,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'registrar_transacao',
-      description: 'Registra uma receita ou despesa imediatamente, sem pedir confirmação. Após registrar, mostra um mini-extrato do dia.',
+      description: 'Registra uma receita ou despesa imediatamente. Após registrar, mostra mini-extrato do dia.',
       parameters: {
         type: 'object',
         properties: {
@@ -28,7 +28,7 @@ const TOOLS = [
           categoria: {
             type: 'string',
             enum: ['Moradia','Transporte','Alimentação','Saúde','Lazer','Vestuário',
-              'Assinaturas','Negócios','Dívidas','Fornecedor','Marketing','Outros'],
+              'Assinaturas','Negócios','Dívidas/Parcelas','Fornecedor','Marketing','Outros'],
           },
           tipo_negocio: { type: 'string', enum: ['pessoal','vendedoria','lukaizen','geral'] },
           data: { type: 'string', description: 'YYYY-MM-DD' },
@@ -42,7 +42,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'desfazer_ultima',
-      description: 'Apaga a última transação registrada se o Pedro pedir para desfazer ou cancelar',
+      description: 'Apaga a última transação registrada se Pedro pedir para desfazer ou cancelar',
       parameters: {
         type: 'object',
         properties: { id: { type: 'string', description: 'ID da transação a apagar' } },
@@ -112,18 +112,13 @@ const TOOLS = [
 // ── System prompt dinâmico ───────────────────────────────────
 
 async function buildSystemPrompt(): Promise<string> {
-  const [contexto, transacoesMes, lembretes] = await Promise.all([
-    buscarTodoContexto(),
+  const [transacoesMes, lembretes] = await Promise.all([
     buscarTransacoesMes(),
     buscarProximosLembretes(),
   ]);
 
   const { receitas, despesas, saldo } = calcularResumo(transacoesMes);
   const porCat = calcularPorCategoria(transacoesMes.filter(t => t.tipo === 'despesa'));
-
-  const contextoStr = contexto.length
-    ? contexto.map(c => `• ${c.chave}: ${c.valor}`).join('\n')
-    : '(nenhum contexto salvo ainda)';
 
   const topCategorias = Object.entries(porCat)
     .sort((a, b) => b[1].despesas - a[1].despesas).slice(0, 5)
@@ -135,21 +130,71 @@ async function buildSystemPrompt(): Promise<string> {
 
   const agora = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 
-  return `Você é Max, assistente pessoal do Pedro Henrique.
+  return `Você é Max, assistente pessoal financeiro e de vida do Pedro Henrique.
 
-PERSONALIDADE:
-- Fala de forma descontraída, informal, como um amigo próximo que entende de finanças
-- Usa linguagem casual do dia a dia, sem ser formal ou robótico
-- É direto e rápido — não enrola, vai logo ao ponto
-- Usa emojis com moderação, só quando faz sentido
-- Às vezes usa expressões brasileiras naturais ("beleza", "tranquilo", "tá bom")
-- Nunca é bajulador — fala a verdade mesmo quando é ruim
-- Tom leve e próximo, mas com firmeza quando o gasto tá preocupando
+═══════════════════════════════════
+QUEM É O PEDRO
+═══════════════════════════════════
 
-PERFIL DO PEDRO:
-${contextoStr}
+Pedro, empreendedor em Goiânia/GO. Arquétipo Explorador-Herói — age rápido, aprende no caminho, valoriza liberdade e autonomia. Maior risco: dispersão entre projetos.
 
-SITUAÇÃO FINANCEIRA (${new Date().toLocaleString('pt-BR', { month: 'long', year: 'numeric' })}):
+NEGÓCIOS:
+• Vendedoria (vendedoria.onrender.com): SaaS de automação de vendas no WhatsApp com IA. Vende kits de ferramentas (Bomvink 21V e Luatek 48V) com entrega em Goiânia e pagamento na entrega. Agente de vendas: Léo.
+• LuKaizen Games: loja de jogos e consertos de games, site dark/cyberpunk. WhatsApp: 5562991526593
+• Instagram @pedro_destrava: conteúdo intelectual e curiosidade, sem clichês
+
+META DE VIDA: R$8.000 a R$20.000/mês em até 1 ano.
+
+═══════════════════════════════════
+SITUAÇÃO FINANCEIRA DO PEDRO
+═══════════════════════════════════
+
+RENDA FIXA (~R$4.550/mês):
+• IEL (emprego fixo): R$2.600
+• Gestão ML/Shopee para Rodrigo (Iluminere): R$1.000
+• Vale alimentação IEL: R$950
+• Vendedoria e LuKaizen: variável
+
+DESPESAS FIXAS (~R$7.504/mês):
+• Parcela MRV (em atraso): R$1.500
+• Parcela Caixa Econômica (em atraso): R$670
+• Empréstimo carro (6x R$650): R$650
+• Empréstimo Fernando (consórcio): R$450
+• Energia + água: R$450
+• Internet + assinaturas + academia: R$384
+• Cartão Bradesco: R$1.800
+• Cartão Nubank Empresa: R$1.600
+
+DESPESAS VARIÁVEIS (~R$2.030/mês):
+• Nubank Pessoal: R$800
+• Cartão esposa: R$780
+• Gasolina (~R$150/semana): R$600
+• Tráfego pago Vendedoria: R$300
+• Lazer/passeios: R$300
+• Vestuário: R$250
+
+DÉFICIT ATUAL: ~-R$6.900/mês (sem receita da Vendedoria/LuKaizen)
+
+DÍVIDAS MAPEADAS (~R$90.200 total):
+• Adijo R$300 — NOME SUJO no CPF, prioridade máxima
+• Americanas R$6.000 — juros abusivos
+• Empréstimo CNPJ esposa R$8.000 — juros abusivos
+• Mercado Pago R$20.000 — renegociar ~R$1.050/mês
+• Infinity Pay R$14.000 — renegociar após MP
+• Condomínio R$4.200 — 12 parcelas atrasadas
+• MRV R$30.000 — ~20 parcelas atrasadas
+• Caixa Econômica R$2.680 — ~4 parcelas atrasadas
+• Empréstimo carro R$3.900 — 6x R$650
+• Cartão Bradesco, Nubank, esposa — faturas mensais recorrentes
+
+NÚMERO QUE MUDA TUDO:
+30 vendas/mês Vendedoria = para de afundar
+50 vendas/mês Vendedoria = começa a pagar dívida antiga
+
+═══════════════════════════════════
+SALDO DO MÊS (${new Date().toLocaleString('pt-BR', { month: 'long', year: 'numeric' })})
+═══════════════════════════════════
+
 💰 Receitas: R$ ${fmt(receitas)}
 💸 Despesas: R$ ${fmt(despesas)}
 📊 Saldo: R$ ${fmt(saldo)}
@@ -159,30 +204,49 @@ ${topCategorias ? `\nMaiores despesas:\n${topCategorias}` : ''}
 PRÓXIMOS LEMBRETES:
 ${lembretesStr}
 
-NEGÓCIOS:
-- Vendedoria: loja de ferramentas via WhatsApp
-- LuKaizen Games: empresa de jogos
-- Meta de renda: R$ 8.000/mês
+═══════════════════════════════════
+COMO VOCÊ TRATA O PEDRO
+═══════════════════════════════════
 
-REGRAS DE COMPORTAMENTO:
-1. REGISTRA NA HORA — não pede confirmação, executa direto
-2. Depois de registrar, mostra um mini-extrato simples: o que registrou + saldo do dia
-3. Se Pedro quiser desfazer, usa a tool desfazer_ultima com o ID retornado
-4. Imagens: analisa, identifica os dados e registra automaticamente
-5. Classifica corretamente: pessoal / vendedoria / lukaizen
-6. Salva informações importantes do Pedro com salvar_informacao
-7. Nunca inventa valores
-8. Português do Brasil informal, tom de amigo próximo
-9. Data/hora atual: ${agora}
+PERSONALIDADE:
+• Direto e objetivo — sem enrolação, sem rodeios
+• Tom de amigo próximo + coach financeiro
+• Linguagem informal, casual, brasileira
+• Respostas curtas — você está no WhatsApp, não num relatório
+• Aponta problemas e sugere próximo passo concreto
+• Alerta quando perceber dispersão entre projetos
+• Nunca inventa valores
+• Emojis com moderação
 
-FORMATO DO MINI-EXTRATO APÓS REGISTRAR:
+PERGUNTA-FILTRO para ideias novas:
+"Isso te aproxima dos R$8.000/mês mais rápido do que dobrar o que já funciona?"
+
+COMPORTAMENTO DE REGISTRO:
+• Registra transações na hora, sem pedir confirmação
+• Após registrar: mostra mini-extrato rápido
+• Se Pedro quiser desfazer: usa desfazer_ultima
+• Imagens/comprovantes: extrai os dados e registra automaticamente
+• Classifica corretamente: pessoal / vendedoria / lukaizen
+
+COMANDOS QUE ENTENDE:
+• "gastei X de Y" → registrar despesa
+• "recebi X de Y" → registrar receita
+• [foto/comprovante] → extrair e registrar
+• "quanto gastei essa semana/mês?" → consulta
+• "qual meu saldo?" → saldo do mês
+• "resumo" → resumo financeiro completo
+• "me lembra de X na data Y às HH:MM" → criar lembrete
+• "lembretes" → listar próximos
+
+Data/hora atual: ${agora}
+
+FORMATO MINI-EXTRATO APÓS REGISTRAR:
 ✅ [descrição] — R$ [valor] ([categoria])
-📅 Hoje: R$ [despesas_hoje] gastos | R$ [receitas_hoje] entrou`;
+📅 Hoje: R$ [despesas] gastos | R$ [receitas] entrou`;
 }
 
 // ── Executor das tools ───────────────────────────────────────
 
-// Guarda o último ID registrado por remetente para possível desfazer
 const ultimosIds = new Map<string, string>();
 
 async function executarTool(nome: string, args: Record<string, unknown>, remetente: string): Promise<string> {
@@ -198,7 +262,6 @@ async function executarTool(nome: string, args: Record<string, unknown>, remeten
         });
         ultimosIds.set(remetente, t.id);
 
-        // Busca extrato do dia para incluir no retorno
         const hoje = await buscarTransacoesHoje();
         const resumoHoje = calcularResumo(hoje);
 
@@ -215,7 +278,7 @@ async function executarTool(nome: string, args: Record<string, unknown>, remeten
       }
 
       case 'desfazer_ultima': {
-        const id = args.id as string ?? ultimosIds.get(remetente);
+        const id = (args.id as string) || ultimosIds.get(remetente);
         if (!id) return JSON.stringify({ ok: false, motivo: 'nenhuma transação recente para desfazer' });
         await cancelarTransacao(id);
         ultimosIds.delete(remetente);
@@ -234,9 +297,9 @@ async function executarTool(nome: string, args: Record<string, unknown>, remeten
         let t: Record<string, unknown>[];
         const p = args.periodo as string;
 
-        if (p === 'hoje')          t = await buscarTransacoesHoje();
-        else if (p === 'semana')   t = await buscarTransacoesSemana();
-        else if (p === 'ontem')    t = await buscarTransacoesOntem();
+        if (p === 'hoje')             t = await buscarTransacoesHoje();
+        else if (p === 'semana')      t = await buscarTransacoesSemana();
+        else if (p === 'ontem')       t = await buscarTransacoesOntem();
         else if (p === 'mes_passado') {
           const mp = new Date(); mp.setMonth(mp.getMonth() - 1);
           t = await buscarTransacoesMes(mp.toISOString().slice(0, 7));
@@ -248,9 +311,9 @@ async function executarTool(nome: string, args: Record<string, unknown>, remeten
         if (args.categoria)
           t = t.filter(x => x.categoria === args.categoria);
 
-        const resumo  = calcularResumo(t);
-        const porCat  = calcularPorCategoria(t);
-        const porNeg  = t.reduce((acc: Record<string, number>, x) => {
+        const resumo = calcularResumo(t);
+        const porCat = calcularPorCategoria(t);
+        const porNeg = t.reduce((acc: Record<string, number>, x) => {
           const n = (x.tipo_negocio as string) ?? 'pessoal';
           if (x.tipo === 'despesa') acc[n] = (acc[n] ?? 0) + Number(x.valor);
           return acc;
@@ -285,7 +348,7 @@ async function executarTool(nome: string, args: Record<string, unknown>, remeten
   }
 }
 
-// ── Processar imagem (fix: base64 seguro para arquivos grandes) ──
+// ── Processar imagem ─────────────────────────────────────────
 
 async function processarImagem(mediaId: string): Promise<string> {
   const WA_TOKEN = Deno.env.get('WHATSAPP_TOKEN')!;
@@ -308,7 +371,7 @@ async function processarImagem(mediaId: string): Promise<string> {
   return `data:${mime};base64,${btoa(binary)}`;
 }
 
-// ── Enviar mensagem longa (split se > 4000 chars) ────────────
+// ── Enviar mensagem longa ────────────────────────────────────
 
 async function enviarResposta(texto: string) {
   const MAX = 4000;
@@ -331,64 +394,50 @@ export async function processarMensagem(
   mediaId: string | null,
 ) {
   try {
-    // 1. Salvar mensagem do usuário no histórico
     await salvarMensagem(remetente, 'user', mensagem ?? `[${tipo}]`);
 
-    // 2. Construir contexto e histórico em paralelo
     const [systemPrompt, historico] = await Promise.all([
       buildSystemPrompt(),
       buscarHistorico(remetente, 18),
     ]);
 
-    // 3. Montar array de mensagens
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const messages: any[] = [
       { role: 'system', content: systemPrompt },
       ...historico.slice(0, -1),
     ];
 
-    // Mensagem atual
     if (tipo === 'image' && mediaId) {
       const imgData = await processarImagem(mediaId);
       messages.push({
         role: 'user',
         content: [
           { type: 'image_url', image_url: { url: imgData } },
-          { type: 'text', text: mensagem ?? 'Analise esta imagem. Se for comprovante ou transação financeira, identifique os dados e registre automaticamente.' },
+          { type: 'text', text: mensagem ?? 'Analise esta imagem. Se for comprovante ou transação financeira, extrai os dados e registra automaticamente.' },
         ],
       });
     } else {
       messages.push({ role: 'user', content: mensagem ?? '' });
     }
 
-    // 4. Chamar GPT-4o
     let resposta = await callGPT(messages);
 
-    // 5. Loop de tool calling
     let iteracoes = 0;
     while (resposta.finish_reason === 'tool_calls' && iteracoes < 5) {
       iteracoes++;
-
       messages.push(resposta.message);
 
       for (const tc of (resposta.message.tool_calls ?? [])) {
         const args   = JSON.parse(tc.function.arguments ?? '{}');
         const result = await executarTool(tc.function.name, args, remetente);
-        messages.push({
-          role: 'tool',
-          tool_call_id: tc.id,
-          content: result,
-        });
+        messages.push({ role: 'tool', tool_call_id: tc.id, content: result });
       }
 
       resposta = await callGPT(messages);
     }
 
-    // 6. Enviar resposta
     const textoFinal = resposta.message.content ?? 'Entendido.';
     await enviarResposta(textoFinal);
-
-    // 7. Salvar no histórico
     await salvarMensagem(remetente, 'assistant', textoFinal);
 
   } catch (err) {
@@ -406,7 +455,7 @@ async function callGPT(messages: any[]) {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { Authorization: `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: MODEL, messages, tools: TOOLS, tool_choice: 'auto', max_tokens: 1024 }),
+    body: JSON.stringify({ model: MODEL, messages, tools: TOOLS, tool_choice: 'auto', max_tokens: 1200 }),
   });
 
   if (!res.ok) {
