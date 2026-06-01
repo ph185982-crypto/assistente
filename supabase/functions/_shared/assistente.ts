@@ -1,10 +1,9 @@
 import {
   salvarMensagem, buscarHistorico, salvarContexto, buscarTodoContexto,
-  inserirTransacao, confirmarTransacao, cancelarTransacao,
+  inserirTransacao, cancelarTransacao,
   buscarTransacoesHoje, buscarTransacoesSemana, buscarTransacoesMes,
   buscarTransacoesOntem,
   inserirLembrete, buscarProximosLembretes,
-  setPendente, getPendente, deletePendente,
   calcularResumo, calcularPorCategoria, fmt,
 } from './supabase.ts';
 import { notificarPedro } from './whatsapp.ts';
@@ -19,7 +18,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'registrar_transacao',
-      description: 'Registra uma receita ou despesa. Sempre confirmar com o usuário antes de salvar.',
+      description: 'Registra uma receita ou despesa imediatamente, sem pedir confirmação. Após registrar, mostra um mini-extrato do dia.',
       parameters: {
         type: 'object',
         properties: {
@@ -42,12 +41,12 @@ const TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'confirmar_pendente',
-      description: 'Confirma ou cancela a transação pendente',
+      name: 'desfazer_ultima',
+      description: 'Apaga a última transação registrada se o Pedro pedir para desfazer ou cancelar',
       parameters: {
         type: 'object',
-        properties: { acao: { type: 'string', enum: ['confirmar','cancelar'] } },
-        required: ['acao'],
+        properties: { id: { type: 'string', description: 'ID da transação a apagar' } },
+        required: ['id'],
       },
     },
   },
@@ -138,13 +137,14 @@ async function buildSystemPrompt(): Promise<string> {
 
   return `Você é Max, assistente pessoal do Pedro Henrique.
 
-SOBRE VOCÊ:
-- Assistente completo: financeiro, agenda, lembretes, conselheiro
-- Tem memória das conversas e aprende sobre Pedro
-- Responde de forma natural e direta, sem ser robótico
-- Responde sobre qualquer assunto, não só finanças
-- Alerta sobre gastos preocupantes com firmeza
-- Use emojis com moderação
+PERSONALIDADE:
+- Fala de forma descontraída, informal, como um amigo próximo que entende de finanças
+- Usa linguagem casual do dia a dia, sem ser formal ou robótico
+- É direto e rápido — não enrola, vai logo ao ponto
+- Usa emojis com moderação, só quando faz sentido
+- Às vezes usa expressões brasileiras naturais ("beleza", "tranquilo", "tá bom")
+- Nunca é bajulador — fala a verdade mesmo quando é ruim
+- Tom leve e próximo, mas com firmeza quando o gasto tá preocupando
 
 PERFIL DO PEDRO:
 ${contextoStr}
@@ -164,17 +164,26 @@ NEGÓCIOS:
 - LuKaizen Games: empresa de jogos
 - Meta de renda: R$ 8.000/mês
 
-REGRAS:
-1. Confirme SEMPRE antes de salvar transações
-2. Imagens: analise e proponha registro
-3. Classifique: pessoal / vendedoria / lukaizen
-4. Salve informações importantes do Pedro com salvar_informacao
-5. Nunca invente valores
-6. Português do Brasil, tom direto e próximo
-7. Data/hora atual: ${agora}`;
+REGRAS DE COMPORTAMENTO:
+1. REGISTRA NA HORA — não pede confirmação, executa direto
+2. Depois de registrar, mostra um mini-extrato simples: o que registrou + saldo do dia
+3. Se Pedro quiser desfazer, usa a tool desfazer_ultima com o ID retornado
+4. Imagens: analisa, identifica os dados e registra automaticamente
+5. Classifica corretamente: pessoal / vendedoria / lukaizen
+6. Salva informações importantes do Pedro com salvar_informacao
+7. Nunca inventa valores
+8. Português do Brasil informal, tom de amigo próximo
+9. Data/hora atual: ${agora}
+
+FORMATO DO MINI-EXTRATO APÓS REGISTRAR:
+✅ [descrição] — R$ [valor] ([categoria])
+📅 Hoje: R$ [despesas_hoje] gastos | R$ [receitas_hoje] entrou`;
 }
 
 // ── Executor das tools ───────────────────────────────────────
+
+// Guarda o último ID registrado por remetente para possível desfazer
+const ultimosIds = new Map<string, string>();
 
 async function executarTool(nome: string, args: Record<string, unknown>, remetente: string): Promise<string> {
   try {
@@ -185,24 +194,32 @@ async function executarTool(nome: string, args: Record<string, unknown>, remeten
           categoria: args.categoria, tipo_negocio: args.tipo_negocio ?? 'pessoal',
           empresa: args.empresa ?? null,
           data_transacao: (args.data as string) || new Date().toISOString().slice(0, 10),
-          confirmado: false,
+          confirmado: true,
         });
-        await setPendente(remetente, t.id);
-        return JSON.stringify({ ok: true, id: t.id, aguardando_confirmacao: true });
+        ultimosIds.set(remetente, t.id);
+
+        // Busca extrato do dia para incluir no retorno
+        const hoje = await buscarTransacoesHoje();
+        const resumoHoje = calcularResumo(hoje);
+
+        return JSON.stringify({
+          ok: true,
+          id: t.id,
+          registrado: true,
+          resumo_hoje: {
+            despesas: resumoHoje.despesas,
+            receitas: resumoHoje.receitas,
+            saldo: resumoHoje.saldo,
+          },
+        });
       }
 
-      case 'confirmar_pendente': {
-        const id = await getPendente(remetente);
-        if (!id) return JSON.stringify({ ok: false, motivo: 'nenhuma transação pendente' });
-        if (args.acao === 'confirmar') {
-          await confirmarTransacao(id);
-          await deletePendente(remetente);
-          return JSON.stringify({ ok: true, confirmado: true });
-        } else {
-          await cancelarTransacao(id);
-          await deletePendente(remetente);
-          return JSON.stringify({ ok: true, cancelado: true });
-        }
+      case 'desfazer_ultima': {
+        const id = args.id as string ?? ultimosIds.get(remetente);
+        if (!id) return JSON.stringify({ ok: false, motivo: 'nenhuma transação recente para desfazer' });
+        await cancelarTransacao(id);
+        ultimosIds.delete(remetente);
+        return JSON.stringify({ ok: true, desfeito: true });
       }
 
       case 'criar_lembrete': {
@@ -243,7 +260,7 @@ async function executarTool(nome: string, args: Record<string, unknown>, remeten
           periodo: p, total: t.length,
           receitas: resumo.receitas, despesas: resumo.despesas, saldo: resumo.saldo,
           por_categoria: porCat, por_negocio: porNeg,
-          ultimas: t.slice(0, 5).map(x => ({
+          ultimas: t.slice(0, 8).map(x => ({
             tipo: x.tipo, valor: x.valor, descricao: x.descricao,
             categoria: x.categoria, data: x.data_transacao,
           })),
@@ -281,7 +298,6 @@ async function processarImagem(mediaId: string): Promise<string> {
   const buf    = await imgRes.arrayBuffer();
   const mime   = imgRes.headers.get('content-type') ?? 'image/jpeg';
 
-  // Encoding seguro para qualquer tamanho de arquivo
   const bytes = new Uint8Array(buf);
   let binary = '';
   const chunk = 8192;
@@ -300,7 +316,6 @@ async function enviarResposta(texto: string) {
     await notificarPedro(texto);
     return;
   }
-  // Quebra em parágrafos para não cortar palavras
   const partes = texto.match(/[\s\S]{1,4000}(?:\n|$)/g) ?? [texto.slice(0, MAX)];
   for (const parte of partes) {
     await notificarPedro(parte.trim());
@@ -325,11 +340,10 @@ export async function processarMensagem(
       buscarHistorico(remetente, 18),
     ]);
 
-    // 3. Montar array de mensagens (histórico já inclui a mensagem atual)
+    // 3. Montar array de mensagens
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const messages: any[] = [
       { role: 'system', content: systemPrompt },
-      // Histórico sem a última entrada (vamos adicionar abaixo com possível imagem)
       ...historico.slice(0, -1),
     ];
 
@@ -340,7 +354,7 @@ export async function processarMensagem(
         role: 'user',
         content: [
           { type: 'image_url', image_url: { url: imgData } },
-          { type: 'text', text: 'Analise esta imagem. Se for comprovante ou transação financeira, identifique os dados e proponha o registro.' },
+          { type: 'text', text: mensagem ?? 'Analise esta imagem. Se for comprovante ou transação financeira, identifique os dados e registre automaticamente.' },
         ],
       });
     } else {
@@ -350,21 +364,19 @@ export async function processarMensagem(
     // 4. Chamar GPT-4o
     let resposta = await callGPT(messages);
 
-    // 5. Loop de tool calling — CORRIGIDO
+    // 5. Loop de tool calling
     let iteracoes = 0;
     while (resposta.finish_reason === 'tool_calls' && iteracoes < 5) {
       iteracoes++;
 
-      // Adicionar mensagem do assistant COM tool_calls (objeto raw, NÃO string)
       messages.push(resposta.message);
 
-      // Executar cada tool e adicionar resultado COM tool_call_id
       for (const tc of (resposta.message.tool_calls ?? [])) {
         const args   = JSON.parse(tc.function.arguments ?? '{}');
         const result = await executarTool(tc.function.name, args, remetente);
         messages.push({
           role: 'tool',
-          tool_call_id: tc.id,   // ← OBRIGATÓRIO, estava faltando
+          tool_call_id: tc.id,
           content: result,
         });
       }
@@ -381,9 +393,8 @@ export async function processarMensagem(
 
   } catch (err) {
     console.error('[Max] Erro crítico:', err);
-    // Sempre notificar Pedro em caso de erro
     try {
-      await notificarPedro(`⚠️ Erro ao processar: ${String(err).slice(0, 200)}`);
+      await notificarPedro(`⚠️ Deu erro aqui: ${String(err).slice(0, 200)}`);
     } catch { /* ignore */ }
   }
 }
