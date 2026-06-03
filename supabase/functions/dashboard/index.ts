@@ -1,5 +1,3 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-
 const SUPABASE_URL = 'https://dzkfwttquhjudsryqhyu.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR6a2Z3dHRxdWhqdWRzcnlxaHl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5ODE0OTksImV4cCI6MjA5NTU1NzQ5OX0.5YeYdNoIfvf37OoovZUtNDam4RXncn_6ODOCISi_0oY';
 const ACCESS_TOKEN = Deno.env.get('DASHBOARD_TOKEN') ?? 'pedro@max2025';
@@ -339,19 +337,14 @@ button:hover{background:#6d28d9}
 </body>
 </html>`;
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   const url = new URL(req.url);
   const token = url.searchParams.get('t') ?? '';
-  const enc = new TextEncoder();
+  const headers = new Headers({ 'content-type': 'text/html; charset=utf-8' });
 
   if (token !== ACCESS_TOKEN) {
-    return new Response(enc.encode(LOGIN), {
-      status: 401,
-      headers: { 'content-type': 'text/html; charset=utf-8' },
-    });
+    return new Response(LOGIN, { status: 401, headers });
   }
 
-  return new Response(enc.encode(PAGE), {
-    headers: { 'content-type': 'text/html; charset=utf-8' },
-  });
+  return new Response(PAGE, { headers });
 });
