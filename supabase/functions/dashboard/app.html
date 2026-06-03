@@ -1,10 +1,4 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-
-const SUPABASE_URL = 'https://dzkfwttquhjudsryqhyu.supabase.co';
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR6a2Z3dHRxdWhqdWRzcnlxaHl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5ODE0OTksImV4cCI6MjA5NTU1NzQ5OX0.5YeYdNoIfvf37OoovZUtNDam4RXncn_6ODOCISi_0oY';
-const ACCESS_TOKEN = Deno.env.get('DASHBOARD_TOKEN') ?? 'pedro@max2025';
-
-const PAGE = `<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -130,8 +124,8 @@ tr:hover td{background:#0d0d16}
 </div>
 
 <script>
-var SURL = 'https://dzkfwttquhjudsryqhyu.supabase.co';
-var SKEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR6a2Z3dHRxdWhqdWRzcnlxaHl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5ODE0OTksImV4cCI6MjA5NTU1NzQ5OX0.5YeYdNoIfvf37OoovZUtNDam4RXncn_6ODOCISi_0oY';
+var SURL = 'SUPA_URL_PLACEHOLDER';
+var SKEY = 'SUPA_KEY_PLACEHOLDER';
 var { createClient } = supabase;
 var db = createClient(SURL, SKEY);
 var periodo = 'mes';
@@ -314,44 +308,3 @@ setInterval(function(){ cards(); extrato(); lembretes(); },60000);
 </script>
 </body>
 </html>
-`;
-
-const LOGIN = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Max</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{background:#0a0a0f;color:#e2e8f0;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:20px}
-h2{color:#a78bfa;font-size:22px}
-form{display:flex;gap:8px}
-input{background:#111118;border:1px solid #2a2a3e;color:#e2e8f0;padding:10px 16px;border-radius:8px;outline:none;font-size:14px;width:220px}
-input:focus{border-color:#7c3aed}
-button{background:#7c3aed;color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:14px}
-button:hover{background:#6d28d9}
-</style>
-</head>
-<body>
-<h2>Max</h2>
-<form method="get"><input name="t" type="password" placeholder="Token de acesso" autofocus><button>Entrar</button></form>
-</body>
-</html>`;
-
-serve(async (req) => {
-  const url = new URL(req.url);
-  const token = url.searchParams.get('t') ?? '';
-  const enc = new TextEncoder();
-
-  if (token !== ACCESS_TOKEN) {
-    return new Response(enc.encode(LOGIN), {
-      status: 401,
-      headers: { 'content-type': 'text/html; charset=utf-8' },
-    });
-  }
-
-  return new Response(enc.encode(PAGE), {
-    headers: { 'content-type': 'text/html; charset=utf-8' },
-  });
-});
