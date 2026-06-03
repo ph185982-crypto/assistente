@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Max - Financas</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0f;color:#e2e8f0;font-family:system-ui,sans-serif;min-height:100vh}
+.header{background:#111118;border-bottom:1px solid #1e1e2e;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+.header h1{font-size:18px;font-weight:700;color:#a78bfa}
+.sync{font-size:11px;color:#64748b}
+.container{padding:20px;max-width:1200px;margin:0 auto}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:20px}
+.card{background:#111118;border:1px solid #1e1e2e;border-radius:12px;padding:18px}
+.card .label{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.card .value{font-size:26px;font-weight:700;line-height:1}
+.card .sub{font-size:11px;color:#64748b;margin-top:5px}
+.green{color:#22c55e}.red{color:#f87171}.yellow{color:#fbbf24}.purple{color:#a78bfa}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}
+@media(max-width:700px){.grid2{grid-template-columns:1fr}}
+.panel{background:#111118;border:1px solid #1e1e2e;border-radius:12px;padding:18px}
+.panel h2{font-size:11px;font-weight:600;color:#64748b;margin-bottom:14px;text-transform:uppercase;letter-spacing:.06em}
+.chart-wrap{position:relative;height:210px}
+.dividas{display:flex;flex-direction:column;gap:11px}
+.divida-item{display:flex;flex-direction:column;gap:5px}
+.divida-header{display:flex;justify-content:space-between;font-size:13px}
+.progress{background:#1e1e2e;border-radius:99px;height:5px;overflow:hidden}
+.bar{height:100%;border-radius:99px;transition:width .6s}
+.bar-red{background:linear-gradient(90deg,#f87171,#dc2626)}
+.bar-yellow{background:linear-gradient(90deg,#fbbf24,#d97706)}
+.bar-purple{background:linear-gradient(90deg,#a78bfa,#7c3aed)}
+.bar-green{background:linear-gradient(90deg,#4ade80,#16a34a)}
+.tag{background:#3f1000;color:#fb923c;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:700;margin-left:5px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:9px 10px;color:#4b5563;font-weight:500;border-bottom:1px solid #1e1e2e;font-size:10px;text-transform:uppercase;letter-spacing:.06em}
+td{padding:9px 10px;border-bottom:1px solid #0f0f1a}
+tr:hover td{background:#0d0d16}
+.badge{padding:2px 7px;border-radius:99px;font-size:10px;font-weight:600}
+.badge-r{background:#0f2f1a;color:#22c55e}
+.badge-d{background:#3f1212;color:#f87171}
+.filters{display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap}
+.btn{background:#1e1e2e;border:1px solid #2a2a3e;color:#94a3b8;padding:5px 12px;border-radius:7px;cursor:pointer;font-size:11px;transition:all .15s}
+.btn.active,.btn:hover{background:#7c3aed;border-color:#7c3aed;color:#fff}
+.empty{text-align:center;color:#374151;padding:32px;font-size:13px}
+.meta-wrap{margin-top:6px}
+.lembrete-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1e1e2e;font-size:13px}
+.lembrete-row:last-child{border-bottom:none}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Max &mdash; Financas</h1>
+  <span class="sync" id="sync"></span>
+</div>
+<div class="container">
+  <div class="cards">
+    <div class="card">
+      <div class="label">Receitas</div>
+      <div class="value green" id="c-rec">...</div>
+      <div class="sub" id="c-rec-n"></div>
+    </div>
+    <div class="card">
+      <div class="label">Despesas</div>
+      <div class="value red" id="c-desp">...</div>
+      <div class="sub" id="c-desp-n"></div>
+    </div>
+    <div class="card">
+      <div class="label">Saldo do mes</div>
+      <div class="value" id="c-saldo">...</div>
+    </div>
+    <div class="card">
+      <div class="label">Meta R$ 8.000</div>
+      <div class="value yellow" id="c-meta">...</div>
+      <div class="meta-wrap">
+        <div class="progress"><div class="bar bar-yellow" id="meta-bar" style="width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h2>Despesas por Categoria</h2>
+      <div class="chart-wrap"><canvas id="chart-cat"></canvas></div>
+    </div>
+    <div class="panel">
+      <h2>Ultimos 6 Meses</h2>
+      <div class="chart-wrap"><canvas id="chart-hist"></canvas></div>
+    </div>
+  </div>
+
+  <div class="grid2" style="margin-bottom:20px">
+    <div class="panel">
+      <h2>Dividas</h2>
+      <div class="dividas" id="dividas"></div>
+    </div>
+    <div class="panel">
+      <h2>Proximos Lembretes</h2>
+      <div id="lembretes"><div class="empty">nenhum</div></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Extrato</h2>
+    <div class="filters">
+      <button class="btn active" onclick="filtro(this,'mes')">Este mes</button>
+      <button class="btn" onclick="filtro(this,'semana')">Semana</button>
+      <button class="btn" onclick="filtro(this,'hoje')">Hoje</button>
+      <button class="btn" onclick="filtro(this,'mes_passado')">Mes passado</button>
+    </div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>Data</th><th>Descricao</th><th>Categoria</th><th>Negocio</th><th>Tipo</th><th style="text-align:right">Valor</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"><tr><td colspan="6" class="empty">Carregando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+var SURL = 'SUPA_URL_PLACEHOLDER';
+var SKEY = 'SUPA_KEY_PLACEHOLDER';
+var { createClient } = supabase;
+var db = createClient(SURL, SKEY);
+var periodo = 'mes';
+var cCat = null, cHist = null;
+
+function r(v){ return 'R$ ' + Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function d(s){ return new Date(s+'T12:00:00').toLocaleDateString('pt-BR'); }
+
+function filtro(btn, p){
+  document.querySelectorAll('.btn').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  periodo = p;
+  extrato();
+}
+
+function range(p){
+  var hoje = new Date();
+  var ymd = function(dt){ return dt.toISOString().slice(0,10); };
+  if(p==='hoje') return {a:ymd(hoje),b:ymd(hoje)};
+  if(p==='semana'){
+    var ini=new Date(hoje); ini.setDate(hoje.getDate()-hoje.getDay());
+    return {a:ymd(ini),b:ymd(hoje)};
+  }
+  if(p==='mes'){
+    var s=ymd(hoje).slice(0,7)+'-01';
+    var f=new Date(hoje.getFullYear(),hoje.getMonth()+1,0);
+    return {a:s,b:ymd(f)};
+  }
+  if(p==='mes_passado'){
+    var mp=new Date(hoje.getFullYear(),hoje.getMonth()-1,1);
+    var mf=new Date(hoje.getFullYear(),hoje.getMonth(),0);
+    return {a:ymd(mp),b:ymd(mf)};
+  }
+  return {a:ymd(hoje).slice(0,7)+'-01',b:ymd(hoje)};
+}
+
+async function cards(){
+  var rg=range('mes');
+  var res=await db.from('transacoes').select('*').eq('confirmado',true).gte('data_transacao',rg.a).lte('data_transacao',rg.b);
+  var data=res.data||[];
+  var rec=data.filter(function(t){return t.tipo==='receita';}).reduce(function(s,t){return s+Number(t.valor);},0);
+  var desp=data.filter(function(t){return t.tipo==='despesa';}).reduce(function(s,t){return s+Number(t.valor);},0);
+  var saldo=rec-desp;
+  document.getElementById('c-rec').textContent=r(rec);
+  document.getElementById('c-rec-n').textContent=data.filter(function(t){return t.tipo==='receita';}).length+' lancamentos';
+  document.getElementById('c-desp').textContent=r(desp);
+  document.getElementById('c-desp-n').textContent=data.filter(function(t){return t.tipo==='despesa';}).length+' lancamentos';
+  var el=document.getElementById('c-saldo');
+  el.textContent=r(saldo);
+  el.className='value '+(saldo>=0?'green':'red');
+  var pct=Math.min(100,Math.round(rec/80));
+  document.getElementById('c-meta').textContent=pct+'%';
+  document.getElementById('meta-bar').style.width=pct+'%';
+  catChart(data);
+}
+
+function catChart(data){
+  var desp=data.filter(function(t){return t.tipo==='despesa';});
+  var cats={};
+  desp.forEach(function(t){ var c=t.categoria||'Outros'; cats[c]=(cats[c]||0)+Number(t.valor); });
+  var sorted=Object.entries(cats).sort(function(a,b){return b[1]-a[1];}).slice(0,8);
+  var colors=['#7c3aed','#a78bfa','#6d28d9','#8b5cf6','#5b21b6','#c4b5fd','#4c1d95','#ddd6fe'];
+  if(cCat) cCat.destroy();
+  cCat=new Chart(document.getElementById('chart-cat'),{
+    type:'doughnut',
+    data:{labels:sorted.map(function(x){return x[0];}),datasets:[{data:sorted.map(function(x){return x[1];}),backgroundColor:colors,borderWidth:0,hoverOffset:4}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{color:'#94a3b8',font:{size:10},boxWidth:10}}}}
+  });
+}
+
+async function histChart(){
+  var hoje=new Date();
+  var meses=[];
+  for(var i=5;i>=0;i--){
+    var d2=new Date(hoje.getFullYear(),hoje.getMonth()-i,1);
+    meses.push(d2.toISOString().slice(0,7));
+  }
+  var labels=meses.map(function(m){
+    var parts=m.split('-');
+    return new Date(parts[0],parts[1]-1,1).toLocaleString('pt-BR',{month:'short'});
+  });
+  var recs=[],desps=[];
+  for(var j=0;j<meses.length;j++){
+    var m=meses[j];
+    var ini=m+'-01';
+    var parts2=m.split('-');
+    var fim=new Date(Number(parts2[0]),Number(parts2[1]),0).toISOString().slice(0,10);
+    var res=await db.from('transacoes').select('tipo,valor').eq('confirmado',true).gte('data_transacao',ini).lte('data_transacao',fim);
+    var data2=res.data||[];
+    recs.push(data2.filter(function(t){return t.tipo==='receita';}).reduce(function(s,t){return s+Number(t.valor);},0));
+    desps.push(data2.filter(function(t){return t.tipo==='despesa';}).reduce(function(s,t){return s+Number(t.valor);},0));
+  }
+  if(cHist) cHist.destroy();
+  cHist=new Chart(document.getElementById('chart-hist'),{
+    type:'bar',
+    data:{labels:labels,datasets:[
+      {label:'Receitas',data:recs,backgroundColor:'#16a34a',borderRadius:3},
+      {label:'Despesas',data:desps,backgroundColor:'#dc2626',borderRadius:3}
+    ]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#94a3b8',font:{size:10}}}},
+      scales:{
+        x:{ticks:{color:'#64748b',font:{size:10}},grid:{color:'#1e1e2e'}},
+        y:{ticks:{color:'#64748b',font:{size:10},callback:function(v){return 'R$'+Number(v).toLocaleString('pt-BR');}},grid:{color:'#1e1e2e'}}
+      }
+    }
+  });
+}
+
+function dividas(){
+  var list=[
+    {n:'Adijo (nome sujo)',t:300,s:300,c:'bar-red',p:true},
+    {n:'Americanas',t:6000,s:6000,c:'bar-red'},
+    {n:'CNPJ esposa',t:8000,s:8000,c:'bar-red'},
+    {n:'Mercado Pago',t:20000,s:20000,c:'bar-yellow'},
+    {n:'Infinity Pay',t:14000,s:14000,c:'bar-yellow'},
+    {n:'Condominio',t:4200,s:4200,c:'bar-yellow'},
+    {n:'Fernando',t:17219.98,s:6719.98,c:'bar-purple'},
+    {n:'MRV',t:46000,s:30000,c:'bar-purple'},
+    {n:'Caixa',t:4680,s:2680,c:'bar-purple'},
+  ];
+  document.getElementById('dividas').innerHTML=list.map(function(d){
+    var pct=Math.round(((d.t-d.s)/d.t)*100);
+    return '<div class="divida-item">'
+      +'<div class="divida-header">'
+      +'<span>'+d.n+(d.p?'<span class="tag">!</span>':'')+'</span>'
+      +'<span style="color:#64748b">'+r(d.s)+'</span>'
+      +'</div>'
+      +'<div class="progress"><div class="bar '+d.c+'" style="width:'+pct+'%"></div></div>'
+      +'</div>';
+  }).join('');
+}
+
+async function lembretes(){
+  var res=await db.from('lembretes').select('*').eq('enviado',false).gte('data_hora',new Date().toISOString()).order('data_hora',{ascending:true}).limit(5);
+  var data=res.data||[];
+  var el=document.getElementById('lembretes');
+  if(!data.length){el.innerHTML='<div class="empty">nenhum</div>';return;}
+  el.innerHTML=data.map(function(l){
+    var dt=new Date(l.data_hora).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+    return '<div class="lembrete-row"><span>'+l.descricao+'</span><span style="font-size:10px;color:#64748b;margin-left:8px;white-space:nowrap">'+dt+'</span></div>';
+  }).join('');
+}
+
+async function extrato(){
+  var rg=range(periodo);
+  var res=await db.from('transacoes').select('*').eq('confirmado',true).gte('data_transacao',rg.a).lte('data_transacao',rg.b).order('data_transacao',{ascending:false}).order('criado_em',{ascending:false});
+  var data=res.data||[];
+  var tbody=document.getElementById('tbody');
+  if(!data.length){tbody.innerHTML='<tr><td colspan="6" class="empty">Sem transacoes</td></tr>';return;}
+  tbody.innerHTML=data.map(function(t){
+    var rec=t.tipo==='receita';
+    return '<tr>'
+      +'<td style="color:#64748b">'+d(t.data_transacao)+'</td>'
+      +'<td>'+( t.descricao||'-')+'</td>'
+      +'<td style="color:#64748b">'+(t.categoria||'-')+'</td>'
+      +'<td style="color:#4b5563">'+(t.tipo_negocio||'-')+'</td>'
+      +'<td><span class="badge '+(rec?'badge-r':'badge-d')+'">'+t.tipo+'</span></td>'
+      +'<td style="text-align:right;font-weight:600" class="'+(rec?'green':'red')+'">'+r(t.valor)+'</td>'
+      +'</tr>';
+  }).join('');
+}
+
+async function init(){
+  await Promise.all([cards(),histChart(),lembretes()]);
+  dividas();
+  extrato();
+  document.getElementById('sync').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR');
+
+  db.channel('rt-tx').on('postgres_changes',{event:'*',schema:'public',table:'transacoes'},function(){
+    cards(); extrato();
+    document.getElementById('sync').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR');
+  }).subscribe();
+  db.channel('rt-lm').on('postgres_changes',{event:'*',schema:'public',table:'lembretes'},lembretes).subscribe();
+}
+
+init();
+setInterval(function(){ cards(); extrato(); lembretes(); },60000);
+</script>
+</body>
+</html>
