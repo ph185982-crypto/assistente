@@ -177,3 +177,154 @@ export function calcularPorCategoria(t: Record<string, unknown>[]) {
 export function fmt(v: number) {
   return v.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
 }
+
+// ── Receitas Previstas ────────────────────────────────────────
+
+export async function inserirReceitaPrevista(dados: Record<string, unknown>) {
+  const { data, error } = await supabase.from('receitas_previstas').insert([dados]).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function consultarReceitasPrevistas(status = 'pendente', periodo?: string) {
+  let q = supabase.from('receitas_previstas').select('*');
+  if (status !== 'todas') q = q.eq('status', status);
+
+  if (periodo) {
+    const hoje = new Date();
+    if (periodo === 'semana') {
+      const fim = new Date(hoje); fim.setDate(hoje.getDate() + 7);
+      q = q.gte('data_prevista', hoje.toISOString().slice(0, 10))
+           .lte('data_prevista', fim.toISOString().slice(0, 10));
+    } else if (periodo === 'mes') {
+      const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+      const fim    = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+      q = q.gte('data_prevista', inicio.toISOString().slice(0, 10))
+           .lte('data_prevista', fim.toISOString().slice(0, 10));
+    } else if (periodo === 'proximo_mes') {
+      const inicio = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 1);
+      const fim    = new Date(hoje.getFullYear(), hoje.getMonth() + 2, 0);
+      q = q.gte('data_prevista', inicio.toISOString().slice(0, 10))
+           .lte('data_prevista', fim.toISOString().slice(0, 10));
+    }
+  }
+
+  const { data, error } = await q.order('data_prevista', { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function confirmarReceitaPrevista(id: string, valorReal?: number, dataRecebimento?: string) {
+  const { data: prev, error: e1 } = await supabase.from('receitas_previstas').select('*').eq('id', id).single();
+  if (e1) throw e1;
+
+  const dataRec    = dataRecebimento ?? new Date().toISOString().slice(0, 10);
+  const valorFinal = valorReal ?? Number(prev.valor);
+
+  const { error: e2 } = await supabase.from('receitas_previstas').update({
+    status: 'recebida',
+    data_recebimento: new Date(dataRec + 'T12:00:00-03:00').toISOString(),
+  }).eq('id', id);
+  if (e2) throw e2;
+
+  const tx = await inserirTransacao({
+    tipo: 'receita',
+    valor: valorFinal,
+    descricao: prev.descricao,
+    categoria: 'Renda Variável',
+    tipo_negocio: prev.tipo_negocio ?? 'pessoal',
+    empresa: prev.cliente ?? null,
+    data_transacao: dataRec,
+    confirmado: true,
+  });
+
+  return { receita_prevista_id: id, transacao_id: tx.id, valor: valorFinal };
+}
+
+export async function marcarReceitasAtrasadas() {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const { data, error } = await supabase.from('receitas_previstas')
+    .update({ status: 'atrasada' })
+    .eq('status', 'pendente')
+    .lt('data_prevista', hoje)
+    .select();
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function buscarReceitasPrevistasPróximas(dias = 3) {
+  const hoje  = new Date();
+  const limite = new Date(hoje); limite.setDate(hoje.getDate() + dias);
+  const { data } = await supabase.from('receitas_previstas')
+    .select('*')
+    .eq('status', 'pendente')
+    .gte('data_prevista', hoje.toISOString().slice(0, 10))
+    .lte('data_prevista', limite.toISOString().slice(0, 10))
+    .order('data_prevista');
+  return data ?? [];
+}
+
+export async function buscarReceitasPrevistasMes(mes?: string) {
+  const ref    = mes ?? new Date().toISOString().slice(0, 7);
+  const inicio = `${ref}-01`;
+  const fim    = new Date(ref + '-01');
+  fim.setMonth(fim.getMonth() + 1); fim.setDate(0);
+  const { data } = await supabase.from('receitas_previstas')
+    .select('*')
+    .gte('data_prevista', inicio)
+    .lte('data_prevista', fim.toISOString().slice(0, 10))
+    .order('data_prevista');
+  return data ?? [];
+}
+
+// ── Dívidas ──────────────────────────────────────────────────
+
+export async function inserirDivida(dados: Record<string, unknown>) {
+  const { data, error } = await supabase.from('dividas').insert([dados]).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function consultarDividas(status = 'ativa') {
+  let q = supabase.from('dividas').select('*');
+  if (status !== 'todas') q = q.eq('status', status);
+  const { data, error } = await q.order('criado_em', { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function pagarParcelaDivida(id: string, valorPago: number) {
+  const { data: div, error: e1 } = await supabase.from('dividas').select('*').eq('id', id).single();
+  if (e1) throw e1;
+  const novoPago  = Number(div.valor_pago) + valorPago;
+  const novoStatus = novoPago >= Number(div.valor_total) ? 'quitada' : 'ativa';
+  const { error: e2 } = await supabase.from('dividas').update({ valor_pago: novoPago, status: novoStatus }).eq('id', id);
+  if (e2) throw e2;
+  return { id, valor_pago_total: novoPago, status: novoStatus, saldo_restante: Number(div.valor_total) - novoPago };
+}
+
+export async function quitarDivida(id: string) {
+  const { data: div, error: e1 } = await supabase.from('dividas').select('*').eq('id', id).single();
+  if (e1) throw e1;
+  const { error } = await supabase.from('dividas').update({ status: 'quitada', valor_pago: div.valor_total }).eq('id', id);
+  if (error) throw error;
+  return { id, status: 'quitada' };
+}
+
+export async function buscarDividasVencendoHoje() {
+  const hoje = new Date().getDate();
+  const { data } = await supabase.from('dividas').select('*').eq('status', 'ativa').eq('dia_vencimento', hoje);
+  return data ?? [];
+}
+
+// ── Metas Financeiras ─────────────────────────────────────────
+
+export async function buscarMetasAtivas() {
+  const { data } = await supabase.from('metas_financeiras').select('*').eq('status', 'ativa');
+  return data ?? [];
+}
+
+export async function atualizarMetaFinanceira(id: string, valorAtual: number) {
+  const { error } = await supabase.from('metas_financeiras').update({ valor_atual: valorAtual }).eq('id', id);
+  if (error) throw error;
+}
