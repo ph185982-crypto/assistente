@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conectar Bradesco &mdash; Max</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0f;color:#e2e8f0;font-family:system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.box{background:#111118;border:1px solid #1e1e2e;border-radius:16px;padding:40px;max-width:480px;width:100%;text-align:center}
+h2{color:#a78bfa;margin-bottom:8px;font-size:20px}
+p{color:#64748b;font-size:13px;margin-bottom:28px;line-height:1.6}
+.btn{background:#7c3aed;color:#fff;border:none;padding:12px 28px;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;transition:background .15s;width:100%}
+.btn:hover{background:#6d28d9}
+.btn:disabled{background:#374151;cursor:not-allowed}
+.result{margin-top:24px;background:#0d0d16;border:1px solid #1e1e2e;border-radius:10px;padding:20px;text-align:left;display:none}
+.result.show{display:block}
+.label{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+.value{font-family:monospace;font-size:13px;color:#22c55e;word-break:break-all;background:#0a0a0f;padding:8px 12px;border-radius:6px;margin-bottom:16px;border:1px solid #1e1e2e}
+.step{font-size:12px;color:#94a3b8;margin-top:12px;line-height:1.7}
+.step strong{color:#fbbf24}
+.error{color:#f87171;font-size:13px;margin-top:16px}
+.loading{display:none;color:#64748b;font-size:13px;margin-top:12px}
+.loading.show{display:block}
+</style>
+</head>
+<body>
+<div class="box">
+  <h2>Conectar Bradesco ao Max</h2>
+  <p>Clique no botao abaixo para conectar sua conta do Bradesco via Open Finance.<br>
+     Apos a conexao, copie o Item ID gerado e adicione como secret no Supabase.</p>
+
+  <button class="btn" id="btn" onclick="iniciar()">Iniciar conexao com Bradesco</button>
+  <div class="loading" id="loading">Carregando widget Pluggy...</div>
+  <div class="error" id="error"></div>
+
+  <div class="result" id="result">
+    <div class="label">Bradesco conectado com sucesso</div>
+
+    <div class="label" style="margin-top:12px">Item ID</div>
+    <div class="value" id="item-id"></div>
+
+    <div class="step">
+      <strong>Proximo passo:</strong><br>
+      1. Copie o Item ID acima<br>
+      2. Acesse o <a href="https://supabase.com/dashboard/project/dzkfwttquhjudsryqhyu/settings/vault" target="_blank" style="color:#a78bfa">Supabase Vault</a><br>
+      3. Adicione o secret: <code style="color:#fbbf24">PLUGGY_ITEM_ID</code> = (Item ID copiado)<br>
+      4. Faca redeploy das functions: <code style="color:#fbbf24">pluggy-sync</code> e <code style="color:#fbbf24">pluggy-webhook</code><br>
+      5. Rode o script <code style="color:#fbbf24">registrar-webhook.ts</code>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.pluggy.ai/pluggy-connect/v2/pluggy-connect.js"></script>
+<script>
+var EDGE_URL = 'https://dzkfwttquhjudsryqhyu.supabase.co/functions/v1/pluggy-connect';
+
+async function iniciar() {
+  var btn = document.getElementById('btn');
+  var loading = document.getElementById('loading');
+  var errorEl = document.getElementById('error');
+
+  btn.disabled = true;
+  loading.className = 'loading show';
+  errorEl.textContent = '';
+
+  try {
+    var res = await fetch(EDGE_URL);
+    var data = await res.json();
+
+    if (!data.accessToken) throw new Error(data.error || 'Token nao retornado');
+
+    loading.className = 'loading';
+
+    var pluggyConnect = new PluggyConnect({
+      connectToken: data.accessToken,
+      onSuccess: function(payload) {
+        var item = payload.item;
+        document.getElementById('item-id').textContent = item.id;
+        document.getElementById('result').className = 'result show';
+        btn.disabled = false;
+      },
+      onError: function(err) {
+        errorEl.textContent = 'Erro: ' + JSON.stringify(err);
+        btn.disabled = false;
+      },
+      onClose: function() {
+        btn.disabled = false;
+        loading.className = 'loading';
+      }
+    });
+
+    pluggyConnect.open();
+  } catch (err) {
+    errorEl.textContent = 'Erro ao carregar widget: ' + err.message;
+    btn.disabled = false;
+    loading.className = 'loading';
+  }
+}
+</script>
+</body>
+</html>

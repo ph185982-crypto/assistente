@@ -2,309 +2,811 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Max - Financas</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Max — Dashboard Financeiro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.22.0/dist/tabler-icons.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{background:#0a0a0f;color:#e2e8f0;font-family:system-ui,sans-serif;min-height:100vh}
-.header{background:#111118;border-bottom:1px solid #1e1e2e;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
-.header h1{font-size:18px;font-weight:700;color:#a78bfa}
-.sync{font-size:11px;color:#64748b}
-.container{padding:20px;max-width:1200px;margin:0 auto}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:20px}
-.card{background:#111118;border:1px solid #1e1e2e;border-radius:12px;padding:18px}
-.card .label{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
-.card .value{font-size:26px;font-weight:700;line-height:1}
-.card .sub{font-size:11px;color:#64748b;margin-top:5px}
-.green{color:#22c55e}.red{color:#f87171}.yellow{color:#fbbf24}.purple{color:#a78bfa}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}
-@media(max-width:700px){.grid2{grid-template-columns:1fr}}
-.panel{background:#111118;border:1px solid #1e1e2e;border-radius:12px;padding:18px}
-.panel h2{font-size:11px;font-weight:600;color:#64748b;margin-bottom:14px;text-transform:uppercase;letter-spacing:.06em}
-.chart-wrap{position:relative;height:210px}
-.dividas{display:flex;flex-direction:column;gap:11px}
-.divida-item{display:flex;flex-direction:column;gap:5px}
-.divida-header{display:flex;justify-content:space-between;font-size:13px}
-.progress{background:#1e1e2e;border-radius:99px;height:5px;overflow:hidden}
-.bar{height:100%;border-radius:99px;transition:width .6s}
-.bar-red{background:linear-gradient(90deg,#f87171,#dc2626)}
-.bar-yellow{background:linear-gradient(90deg,#fbbf24,#d97706)}
-.bar-purple{background:linear-gradient(90deg,#a78bfa,#7c3aed)}
-.bar-green{background:linear-gradient(90deg,#4ade80,#16a34a)}
-.tag{background:#3f1000;color:#fb923c;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:700;margin-left:5px}
-table{width:100%;border-collapse:collapse;font-size:12px}
-th{text-align:left;padding:9px 10px;color:#4b5563;font-weight:500;border-bottom:1px solid #1e1e2e;font-size:10px;text-transform:uppercase;letter-spacing:.06em}
-td{padding:9px 10px;border-bottom:1px solid #0f0f1a}
-tr:hover td{background:#0d0d16}
-.badge{padding:2px 7px;border-radius:99px;font-size:10px;font-weight:600}
-.badge-r{background:#0f2f1a;color:#22c55e}
-.badge-d{background:#3f1212;color:#f87171}
-.filters{display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap}
-.btn{background:#1e1e2e;border:1px solid #2a2a3e;color:#94a3b8;padding:5px 12px;border-radius:7px;cursor:pointer;font-size:11px;transition:all .15s}
-.btn.active,.btn:hover{background:#7c3aed;border-color:#7c3aed;color:#fff}
-.empty{text-align:center;color:#374151;padding:32px;font-size:13px}
-.meta-wrap{margin-top:6px}
-.lembrete-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1e1e2e;font-size:13px}
-.lembrete-row:last-child{border-bottom:none}
+@keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+@keyframes rt-pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.35;transform:scale(0.7)} }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;background:#F7F8FA;color:#1A1A2E;-webkit-font-smoothing:antialiased}
+.sk{background:linear-gradient(90deg,#efefef 25%,#e3e3e3 50%,#efefef 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:8px}
+@media(min-width:560px){#maxmain{max-width:540px!important}}
+@media(min-width:900px){#maxmain{max-width:720px!important}#chartsrow{display:grid!important;grid-template-columns:1fr 1fr!important}}
+button{cursor:pointer;font-family:inherit}
 </style>
 </head>
 <body>
-<div class="header">
-  <h1>Max &mdash; Financas</h1>
-  <span class="sync" id="sync"></span>
+
+<!-- Toast erro -->
+<div id="toast-error" style="display:none;position:fixed;top:68px;left:0;right:0;display:flex;justify-content:center;z-index:200;pointer-events:none;">
+  <div style="background:#FAEEDA;border:1px solid #BA7517;color:#7A4E0A;padding:10px 18px;border-radius:10px;font-size:13px;display:flex;align-items:center;gap:8px;box-shadow:0 4px 16px rgba(0,0,0,0.1);pointer-events:auto;">
+    <i class="ti ti-alert-circle" style="font-size:15px;"></i><span id="toast-msg"></span>
+  </div>
 </div>
-<div class="container">
-  <div class="cards">
-    <div class="card">
-      <div class="label">Receitas</div>
-      <div class="value green" id="c-rec">...</div>
-      <div class="sub" id="c-rec-n"></div>
+
+<!-- TOPBAR -->
+<div style="position:sticky;top:0;z-index:100;background:#fff;border-bottom:0.5px solid rgba(0,0,0,0.08);padding:13px 16px;display:flex;justify-content:space-between;align-items:center;">
+  <div>
+    <div style="font-size:12px;color:#6B7280;margin-bottom:1px;" id="saudacao-label">Bom dia,</div>
+    <div style="font-size:18px;font-weight:600;color:#1A1A2E;letter-spacing:-0.3px;line-height:1.15;">Pedro</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;">
+    <div style="position:relative;">
+      <button type="button" style="width:38px;height:38px;border-radius:50%;background:#F7F8FA;border:1px solid rgba(0,0,0,0.08);display:flex;align-items:center;justify-content:center;color:#1A1A2E;outline:none;">
+        <i class="ti ti-bell" style="font-size:18px;"></i>
+      </button>
+      <div id="notif-badge" style="display:none;position:absolute;top:-2px;right:-2px;background:#A32D2D;color:#fff;font-size:9px;font-weight:600;min-width:16px;height:16px;border-radius:99px;display:flex;align-items:center;justify-content:center;border:2px solid #fff;padding:0 3px;line-height:1;" id="bell-count">0</div>
     </div>
-    <div class="card">
-      <div class="label">Despesas</div>
-      <div class="value red" id="c-desp">...</div>
-      <div class="sub" id="c-desp-n"></div>
+    <div style="width:38px;height:38px;border-radius:50%;background:#185FA5;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;letter-spacing:0.5px;flex-shrink:0;">PD</div>
+  </div>
+</div>
+
+<!-- CONTEÚDO PRINCIPAL -->
+<div id="maxmain" style="padding:16px;margin:0 auto;max-width:480px;">
+
+  <!-- HERO: SALDO -->
+  <div style="background:#185FA5;border-radius:16px;padding:20px;color:#fff;box-shadow:0 4px 20px rgba(24,95,165,0.2);margin-bottom:10px;overflow:hidden;">
+    <div id="hero-skeleton" class="sk-wrap" style="display:flex;flex-direction:column;gap:11px;">
+      <div class="sk" style="height:12px;width:50%;border-radius:6px;opacity:0.35;"></div>
+      <div class="sk" style="height:38px;width:66%;border-radius:8px;opacity:0.35;"></div>
+      <div class="sk" style="height:6px;width:100%;border-radius:99px;margin-top:4px;opacity:0.22;"></div>
+      <div class="sk" style="height:11px;width:54%;border-radius:6px;opacity:0.28;"></div>
     </div>
-    <div class="card">
-      <div class="label">Saldo do mes</div>
-      <div class="value" id="c-saldo">...</div>
+    <div id="hero-content" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+        <div style="font-size:12px;color:rgba(255,255,255,0.7);">Saldo do mês · <span id="mes-ano-label"></span></div>
+        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:rgba(255,255,255,0.55);">
+          <span id="rt-dot" style="width:6px;height:6px;border-radius:50%;display:inline-block;background:#9CA3AF;flex-shrink:0;"></span>live
+        </div>
+      </div>
+      <div id="saldo-val" style="font-size:32px;font-weight:600;letter-spacing:-0.8px;font-variant-numeric:tabular-nums;margin-bottom:18px;margin-top:2px;line-height:1.1;">R$ 0,00</div>
+      <div style="background:rgba(255,255,255,0.2);border-radius:99px;height:6px;overflow:hidden;">
+        <div id="meta-bar" style="width:0%;height:100%;background:rgba(255,255,255,0.88);border-radius:99px;transition:width 0.6s ease;"></div>
+      </div>
+      <div id="meta-label" style="font-size:12px;color:rgba(255,255,255,0.68);margin-top:8px;">0% da meta mínima · — dias restantes</div>
     </div>
-    <div class="card">
-      <div class="label">Meta R$ 8.000</div>
-      <div class="value yellow" id="c-meta">...</div>
-      <div class="meta-wrap">
-        <div class="progress"><div class="bar bar-yellow" id="meta-bar" style="width:0%"></div></div>
+  </div>
+
+  <!-- MINI CARDS -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+    <!-- Receitas -->
+    <div style="background:#fff;border-radius:16px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+      <div id="rec-sk" style="display:flex;flex-direction:column;gap:9px;">
+        <div class="sk" style="width:32px;height:32px;border-radius:8px;"></div>
+        <div class="sk" style="height:10px;width:45%;"></div>
+        <div class="sk" style="height:20px;width:76%;"></div>
+        <div class="sk" style="height:18px;width:58%;border-radius:99px;"></div>
+      </div>
+      <div id="rec-content" style="display:none;">
+        <div style="width:32px;height:32px;border-radius:8px;background:#EAF3DE;display:flex;align-items:center;justify-content:center;margin-bottom:9px;">
+          <i class="ti ti-trending-up" style="font-size:16px;color:#3B6D11;"></i>
+        </div>
+        <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#6B7280;margin-bottom:4px;">Receitas</div>
+        <div id="rec-val" style="font-size:16px;font-weight:600;color:#3B6D11;font-variant-numeric:tabular-nums;line-height:1.2;margin-bottom:8px;">R$ 0,00</div>
+        <span id="rec-badge" style="padding:2px 8px;border-radius:99px;font-size:11px;font-weight:500;">+0% vs mês ant.</span>
+      </div>
+    </div>
+    <!-- Despesas -->
+    <div style="background:#fff;border-radius:16px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+      <div id="desp-sk" style="display:flex;flex-direction:column;gap:9px;">
+        <div class="sk" style="width:32px;height:32px;border-radius:8px;"></div>
+        <div class="sk" style="height:10px;width:45%;"></div>
+        <div class="sk" style="height:20px;width:76%;"></div>
+        <div class="sk" style="height:18px;width:58%;border-radius:99px;"></div>
+      </div>
+      <div id="desp-content" style="display:none;">
+        <div style="width:32px;height:32px;border-radius:8px;background:#FCEBEB;display:flex;align-items:center;justify-content:center;margin-bottom:9px;">
+          <i class="ti ti-trending-down" style="font-size:16px;color:#A32D2D;"></i>
+        </div>
+        <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#6B7280;margin-bottom:4px;">Despesas</div>
+        <div id="desp-val" style="font-size:16px;font-weight:600;color:#A32D2D;font-variant-numeric:tabular-nums;line-height:1.2;margin-bottom:8px;">R$ 0,00</div>
+        <span id="desp-badge" style="padding:2px 8px;border-radius:99px;font-size:11px;font-weight:500;">+0% vs mês ant.</span>
       </div>
     </div>
   </div>
 
-  <div class="grid2">
-    <div class="panel">
-      <h2>Despesas por Categoria</h2>
-      <div class="chart-wrap"><canvas id="chart-cat"></canvas></div>
+  <!-- INSIGHT DO MAX -->
+  <div id="insight-box" style="display:none;background:#E6F1FB;border:1px solid #B5D4F4;border-radius:16px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:flex-start;gap:12px;">
+    <div style="width:34px;height:34px;border-radius:9px;background:#185FA5;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;">
+      <i class="ti ti-bulb" style="font-size:17px;color:#fff;"></i>
     </div>
-    <div class="panel">
-      <h2>Ultimos 6 Meses</h2>
-      <div class="chart-wrap"><canvas id="chart-hist"></canvas></div>
-    </div>
-  </div>
-
-  <div class="grid2" style="margin-bottom:20px">
-    <div class="panel">
-      <h2>Dividas</h2>
-      <div class="dividas" id="dividas"></div>
-    </div>
-    <div class="panel">
-      <h2>Proximos Lembretes</h2>
-      <div id="lembretes"><div class="empty">nenhum</div></div>
+    <div>
+      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#185FA5;margin-bottom:5px;">Insight do Max</div>
+      <div id="insight-text" style="font-size:13px;color:#1A1A2E;line-height:1.55;text-wrap:pretty;"></div>
     </div>
   </div>
 
-  <div class="panel">
-    <h2>Extrato</h2>
-    <div class="filters">
-      <button class="btn active" onclick="filtro(this,'mes')">Este mes</button>
-      <button class="btn" onclick="filtro(this,'semana')">Semana</button>
-      <button class="btn" onclick="filtro(this,'hoje')">Hoje</button>
-      <button class="btn" onclick="filtro(this,'mes_passado')">Mes passado</button>
+  <!-- GRÁFICOS -->
+  <div id="chartsrow" style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;">
+    <!-- Donut -->
+    <div style="background:#fff;border-radius:16px;padding:16px 16px 14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#6B7280;margin-bottom:14px;">Gastos por categoria</div>
+      <div id="donut-sk" style="display:flex;flex-direction:column;align-items:center;gap:12px;">
+        <div class="sk" style="width:140px;height:140px;border-radius:50%;"></div>
+        <div style="display:flex;flex-direction:column;gap:8px;width:100%;">
+          <div class="sk" style="height:13px;"></div>
+          <div class="sk" style="height:13px;width:80%;"></div>
+          <div class="sk" style="height:13px;width:62%;"></div>
+        </div>
+      </div>
+      <div id="donut-empty" style="display:none;text-align:center;padding:30px 0;color:#9CA3AF;font-size:13px;">
+        <i class="ti ti-chart-donut" style="font-size:30px;color:#D1D5DB;display:block;margin-bottom:8px;"></i>
+        Nenhuma despesa registrada ainda.
+      </div>
+      <div id="donut-content" style="display:none;">
+        <div style="display:flex;justify-content:center;margin-bottom:16px;">
+          <canvas id="donut-chart" width="160" height="160" style="max-width:160px;max-height:160px;"></canvas>
+        </div>
+        <div id="donut-legend" style="display:flex;flex-direction:column;"></div>
+      </div>
     </div>
-    <div style="overflow-x:auto">
-      <table>
-        <thead>
-          <tr>
-            <th>Data</th><th>Descricao</th><th>Categoria</th><th>Negocio</th><th>Tipo</th><th style="text-align:right">Valor</th>
-          </tr>
-        </thead>
-        <tbody id="tbody"><tr><td colspan="6" class="empty">Carregando...</td></tr></tbody>
-      </table>
+    <!-- Bar -->
+    <div style="background:#fff;border-radius:16px;padding:16px 16px 14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#6B7280;margin-bottom:14px;">Últimos 7 dias</div>
+      <div id="bar-sk"><div class="sk" style="height:90px;border-radius:8px;"></div></div>
+      <div id="bar-content" style="display:none;">
+        <div style="position:relative;height:100px;">
+          <canvas id="bar-chart" style="position:absolute;inset:0;width:100%;height:100%;"></canvas>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;margin-top:10px;justify-content:center;">
+          <div style="display:flex;align-items:center;gap:5px;">
+            <div style="width:8px;height:8px;border-radius:2px;background:#378ADD;"></div>
+            <span style="font-size:12px;color:#6B7280;">Receitas</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:5px;">
+            <div style="width:8px;height:8px;border-radius:2px;background:#FCEBEB;border:1px solid #E0ADAD;"></div>
+            <span style="font-size:12px;color:#6B7280;">Despesas</span>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
+
+  <!-- RECEITAS PREVISTAS -->
+  <div style="margin-bottom:16px;">
+    <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#6B7280;margin-bottom:12px;">Receitas previstas</div>
+    <div id="rp-sk" style="display:flex;flex-direction:column;gap:8px;">
+      <div class="sk" style="height:68px;border-radius:12px;"></div>
+      <div class="sk" style="height:68px;border-radius:12px;"></div>
+      <div class="sk" style="height:68px;border-radius:12px;"></div>
+    </div>
+    <div id="rp-empty" style="display:none;background:#fff;border-radius:16px;padding:28px 16px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.06);color:#9CA3AF;font-size:13px;">
+      <i class="ti ti-calendar-off" style="font-size:28px;color:#D1D5DB;display:block;margin-bottom:8px;"></i>
+      Nenhuma receita prevista pendente.
+    </div>
+    <div id="rp-list" style="display:none;flex-direction:column;gap:8px;"></div>
+  </div>
+
+  <!-- DÍVIDAS -->
+  <div style="margin-bottom:16px;">
+    <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#6B7280;margin-bottom:12px;">Tracker de dívidas</div>
+    <div id="div-sk" style="display:flex;flex-direction:column;gap:8px;">
+      <div class="sk" style="height:84px;border-radius:12px;"></div>
+      <div class="sk" style="height:84px;border-radius:12px;"></div>
+    </div>
+    <div id="div-empty" style="display:none;background:#fff;border-radius:16px;padding:28px 16px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.06);color:#9CA3AF;font-size:13px;">
+      <i class="ti ti-circle-check" style="font-size:28px;color:#3B6D11;display:block;margin-bottom:8px;"></i>
+      Sem dívidas ativas. Boa, Pedro!
+    </div>
+    <div id="div-content" style="display:none;">
+      <div id="div-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;"></div>
+      <div style="background:#F7F8FA;border:1px solid rgba(0,0,0,0.07);border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;">
+        <div id="div-total-pct" style="font-size:12px;color:#6B7280;">Total em dívidas · 0% pago</div>
+        <div id="div-total-val" style="font-size:13px;font-weight:600;color:#1A1A2E;font-variant-numeric:tabular-nums;">R$ 0,00</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- METAS -->
+  <div style="margin-bottom:16px;">
+    <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#6B7280;margin-bottom:12px;">Metas financeiras</div>
+    <div id="meta-sk" style="display:flex;flex-direction:column;gap:8px;">
+      <div class="sk" style="height:76px;border-radius:12px;"></div>
+      <div class="sk" style="height:76px;border-radius:12px;"></div>
+    </div>
+    <div id="meta-empty" style="display:none;background:#fff;border-radius:16px;padding:28px 16px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.06);color:#9CA3AF;font-size:13px;">
+      <i class="ti ti-target" style="font-size:28px;color:#D1D5DB;display:block;margin-bottom:8px;"></i>
+      Nenhuma meta ativa ainda.
+    </div>
+    <div id="meta-list" style="display:none;flex-direction:column;gap:8px;"></div>
+  </div>
+
+  <!-- EXTRATO -->
+  <div style="margin-bottom:16px;">
+    <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#6B7280;margin-bottom:12px;">Extrato</div>
+    <div style="display:flex;gap:3px;background:#EAEBEC;border-radius:99px;padding:3px;margin-bottom:12px;">
+      <button type="button" id="tab-hoje" onclick="app.mudarTab('hoje')" style="flex:1;padding:7px 0;border-radius:99px;background:transparent;color:#6B7280;font-size:13px;font-weight:400;border:none;">Hoje</button>
+      <button type="button" id="tab-semana" onclick="app.mudarTab('semana')" style="flex:1;padding:7px 0;border-radius:99px;background:transparent;color:#6B7280;font-size:13px;font-weight:400;border:none;">Semana</button>
+      <button type="button" id="tab-mes" onclick="app.mudarTab('mes')" style="flex:1;padding:7px 0;border-radius:99px;background:#185FA5;color:#fff;font-size:13px;font-weight:500;border:none;">Mês</button>
+    </div>
+    <div id="tx-sk" style="display:none;flex-direction:column;gap:7px;">
+      <div class="sk" style="height:56px;border-radius:10px;"></div>
+      <div class="sk" style="height:56px;border-radius:10px;"></div>
+      <div class="sk" style="height:56px;border-radius:10px;"></div>
+      <div class="sk" style="height:56px;border-radius:10px;"></div>
+    </div>
+    <div id="tx-empty" style="display:none;background:#fff;border-radius:16px;padding:32px 16px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.06);color:#9CA3AF;font-size:13px;line-height:1.65;">
+      <i class="ti ti-receipt-off" style="font-size:28px;color:#D1D5DB;display:block;margin-bottom:8px;"></i>
+      Nenhuma transação neste período.<br>Envie uma mensagem para o Max no WhatsApp.
+    </div>
+    <div id="tx-list" style="display:none;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);"></div>
+    <button id="load-more-btn" type="button" onclick="app.carregarMais()" style="display:none;width:100%;margin-top:10px;padding:12px;border-radius:10px;border:1px solid rgba(0,0,0,0.1);background:#fff;color:#185FA5;font-size:13px;font-weight:500;cursor:pointer;">
+      Carregar mais
+    </button>
+  </div>
+
+  <!-- LEMBRETES -->
+  <div style="margin-bottom:16px;">
+    <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#6B7280;margin-bottom:12px;">Próximos lembretes</div>
+    <div id="lem-sk" style="display:flex;flex-direction:column;gap:7px;">
+      <div class="sk" style="height:54px;border-radius:10px;"></div>
+      <div class="sk" style="height:54px;border-radius:10px;"></div>
+      <div class="sk" style="height:54px;border-radius:10px;"></div>
+    </div>
+    <div id="lem-empty" style="display:none;background:#fff;border-radius:16px;padding:28px 16px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.06);color:#9CA3AF;font-size:13px;">
+      <i class="ti ti-bell-off" style="font-size:28px;color:#D1D5DB;display:block;margin-bottom:8px;"></i>
+      Nenhum lembrete pendente.
+    </div>
+    <div id="lem-list" style="display:none;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);"></div>
+  </div>
+
+  <!-- RODAPÉ -->
+  <div style="text-align:center;padding:16px 0 36px;font-size:12px;color:#C4C4C4;line-height:1.75;">
+    Max Dashboard · Dados em tempo real via Supabase<br>
+    Última atualização: <span id="last-update">—</span>
+  </div>
+
 </div>
 
 <script>
-var SURL = 'SUPA_URL_PLACEHOLDER';
-var SKEY = 'SUPA_KEY_PLACEHOLDER';
-var { createClient } = supabase;
-var db = createClient(SURL, SKEY);
-var periodo = 'mes';
-var cCat = null, cHist = null;
+const SUPABASE_URL  = 'https://dzkfwttquhjudsryqhyu.supabase.co';
+const SUPABASE_KEY  = 'sb_publishable_PGRJsDTNk9prYlIRUe6XHA_AGxTku3z';
+const META_MINIMA   = 8000;
 
-function r(v){ return 'R$ ' + Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-function d(s){ return new Date(s+'T12:00:00').toLocaleDateString('pt-BR'); }
+const CORES_DONUT = ['#185FA5','#378ADD','#85B7EB','#B5D4F4','#D3D1C7','#A0C4E0'];
 
-function filtro(btn, p){
-  document.querySelectorAll('.btn').forEach(function(b){ b.classList.remove('active'); });
-  btn.classList.add('active');
-  periodo = p;
-  extrato();
+const NEGOCIO_MAP = {
+  nexos:          { label:'Nexos',     bg:'#E6F1FB', color:'#185FA5' },
+  vendedoria:     { label:'Vendedoria',bg:'#EEEDFE', color:'#534AB7' },
+  lukaizen:       { label:'Lukaizen',  bg:'#EAF3DE', color:'#3B6D11' },
+  pedro_destrava: { label:'Destrava',  bg:'#FAEEDA', color:'#BA7517' },
+  shopee_boost:   { label:'Shopee',    bg:'#FAECE7', color:'#993C1D' },
+  pessoal:        { label:'Pessoal',   bg:'#F1EFE8', color:'#5F5E5A' },
+};
+
+function fmt(v) {
+  return Number(v || 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
 }
 
-function range(p){
-  var hoje = new Date();
-  var ymd = function(dt){ return dt.toISOString().slice(0,10); };
-  if(p==='hoje') return {a:ymd(hoje),b:ymd(hoje)};
-  if(p==='semana'){
-    var ini=new Date(hoje); ini.setDate(hoje.getDate()-hoje.getDay());
-    return {a:ymd(ini),b:ymd(hoje)};
-  }
-  if(p==='mes'){
-    var s=ymd(hoje).slice(0,7)+'-01';
-    var f=new Date(hoje.getFullYear(),hoje.getMonth()+1,0);
-    return {a:s,b:ymd(f)};
-  }
-  if(p==='mes_passado'){
-    var mp=new Date(hoje.getFullYear(),hoje.getMonth()-1,1);
-    var mf=new Date(hoje.getFullYear(),hoje.getMonth(),0);
-    return {a:ymd(mp),b:ymd(mf)};
-  }
-  return {a:ymd(hoje).slice(0,7)+'-01',b:ymd(hoje)};
+function fmtDate(d) {
+  try { return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }); }
+  catch(e) { return d || ''; }
 }
 
-async function cards(){
-  var rg=range('mes');
-  var res=await db.from('transacoes').select('*').eq('confirmado',true).gte('data_transacao',rg.a).lte('data_transacao',rg.b);
-  var data=res.data||[];
-  var rec=data.filter(function(t){return t.tipo==='receita';}).reduce(function(s,t){return s+Number(t.valor);},0);
-  var desp=data.filter(function(t){return t.tipo==='despesa';}).reduce(function(s,t){return s+Number(t.valor);},0);
-  var saldo=rec-desp;
-  document.getElementById('c-rec').textContent=r(rec);
-  document.getElementById('c-rec-n').textContent=data.filter(function(t){return t.tipo==='receita';}).length+' lancamentos';
-  document.getElementById('c-desp').textContent=r(desp);
-  document.getElementById('c-desp-n').textContent=data.filter(function(t){return t.tipo==='despesa';}).length+' lancamentos';
-  var el=document.getElementById('c-saldo');
-  el.textContent=r(saldo);
-  el.className='value '+(saldo>=0?'green':'red');
-  var pct=Math.min(100,Math.round(rec/80));
-  document.getElementById('c-meta').textContent=pct+'%';
-  document.getElementById('meta-bar').style.width=pct+'%';
-  catChart(data);
+function saudacao() {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 12) return 'Bom dia';
+  if (h >= 12 && h < 18) return 'Boa tarde';
+  return 'Boa noite';
 }
 
-function catChart(data){
-  var desp=data.filter(function(t){return t.tipo==='despesa';});
-  var cats={};
-  desp.forEach(function(t){ var c=t.categoria||'Outros'; cats[c]=(cats[c]||0)+Number(t.valor); });
-  var sorted=Object.entries(cats).sort(function(a,b){return b[1]-a[1];}).slice(0,8);
-  var colors=['#7c3aed','#a78bfa','#6d28d9','#8b5cf6','#5b21b6','#c4b5fd','#4c1d95','#ddd6fe'];
-  if(cCat) cCat.destroy();
-  cCat=new Chart(document.getElementById('chart-cat'),{
-    type:'doughnut',
-    data:{labels:sorted.map(function(x){return x[0];}),datasets:[{data:sorted.map(function(x){return x[1];}),backgroundColor:colors,borderWidth:0,hoverOffset:4}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{color:'#94a3b8',font:{size:10},boxWidth:10}}}}
-  });
+function icone(categoria) {
+  const c = (categoria || '').toLowerCase();
+  if (c.includes('aliment')||c.includes('restaur')||c.includes('refeic')||c.includes('comida')) return 'ti ti-coffee';
+  if (c.includes('transport')||c.includes('uber')||c.includes('gasolina')||c.includes('carro')) return 'ti ti-car';
+  if (c.includes('moradia')||c.includes('aluguel')||c.includes('casa')||c.includes('imovel')) return 'ti ti-home';
+  if (c.includes('saúde')||c.includes('saude')||c.includes('médic')||c.includes('medic')||c.includes('farm')) return 'ti ti-heart';
+  if (c.includes('educa')||c.includes('curso')||c.includes('livro')||c.includes('faculdade')) return 'ti ti-book';
+  if (c.includes('lazer')||c.includes('entreten')||c.includes('viagem')||c.includes('netflix')) return 'ti ti-device-gamepad';
+  if (c.includes('tecnol')||c.includes('software')||c.includes('hosting')||c.includes('server')) return 'ti ti-device-laptop';
+  if (c.includes('market')||c.includes('tráfego')||c.includes('trafeg')||c.includes('ads')||c.includes('anúncio')) return 'ti ti-speakerphone';
+  if (c.includes('salário')||c.includes('salario')||c.includes('pagamento')||c.includes('pix receb')) return 'ti ti-cash';
+  if (c.includes('freela')||c.includes('consultoria')||c.includes('serviço')||c.includes('projeto')) return 'ti ti-briefcase';
+  if (c.includes('invest')) return 'ti ti-chart-bar';
+  if (c.includes('assinat')||c.includes('mensalit')||c.includes('renda variável')||c.includes('renda variavel')) return 'ti ti-credit-card';
+  if (c.includes('taxa')||c.includes('imposto')||c.includes('conta')) return 'ti ti-file-invoice';
+  if (c.includes('dívida')||c.includes('divida')||c.includes('parcela')) return 'ti ti-credit-card';
+  return 'ti ti-receipt';
 }
 
-async function histChart(){
-  var hoje=new Date();
-  var meses=[];
-  for(var i=5;i>=0;i--){
-    var d2=new Date(hoje.getFullYear(),hoje.getMonth()-i,1);
-    meses.push(d2.toISOString().slice(0,7));
+function el(id) { return document.getElementById(id); }
+function show(id) { const e = el(id); if (e) e.style.display = ''; }
+function hide(id) { const e = el(id); if (e) e.style.display = 'none'; }
+function showFlex(id) { const e = el(id); if (e) e.style.display = 'flex'; }
+function showBlock(id) { const e = el(id); if (e) e.style.display = 'block'; }
+
+class MaxDashboard {
+  constructor() {
+    this.db = null;
+    this.donutChart = null;
+    this.barChart = null;
+    this.tabAtiva = 'mes';
+    this.transacoes = [];
+    this.transacoesOffset = 0;
+    this.hasMore = false;
+    this.realtimeConnected = false;
   }
-  var labels=meses.map(function(m){
-    var parts=m.split('-');
-    return new Date(parts[0],parts[1]-1,1).toLocaleString('pt-BR',{month:'short'});
-  });
-  var recs=[],desps=[];
-  for(var j=0;j<meses.length;j++){
-    var m=meses[j];
-    var ini=m+'-01';
-    var parts2=m.split('-');
-    var fim=new Date(Number(parts2[0]),Number(parts2[1]),0).toISOString().slice(0,10);
-    var res=await db.from('transacoes').select('tipo,valor').eq('confirmado',true).gte('data_transacao',ini).lte('data_transacao',fim);
-    var data2=res.data||[];
-    recs.push(data2.filter(function(t){return t.tipo==='receita';}).reduce(function(s,t){return s+Number(t.valor);},0));
-    desps.push(data2.filter(function(t){return t.tipo==='despesa';}).reduce(function(s,t){return s+Number(t.valor);},0));
+
+  async init() {
+    el('saudacao-label').textContent = saudacao() + ',';
+    el('mes-ano-label').textContent = new Date().toLocaleDateString('pt-BR', { month:'long', year:'numeric' });
+
+    await this._waitDeps();
+    this.db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    await this._carregarTudo();
+    this._setupRealtime();
   }
-  if(cHist) cHist.destroy();
-  cHist=new Chart(document.getElementById('chart-hist'),{
-    type:'bar',
-    data:{labels:labels,datasets:[
-      {label:'Receitas',data:recs,backgroundColor:'#16a34a',borderRadius:3},
-      {label:'Despesas',data:desps,backgroundColor:'#dc2626',borderRadius:3}
-    ]},
-    options:{
-      responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{labels:{color:'#94a3b8',font:{size:10}}}},
-      scales:{
-        x:{ticks:{color:'#64748b',font:{size:10}},grid:{color:'#1e1e2e'}},
-        y:{ticks:{color:'#64748b',font:{size:10},callback:function(v){return 'R$'+Number(v).toLocaleString('pt-BR');}},grid:{color:'#1e1e2e'}}
-      }
+
+  _waitDeps() {
+    return new Promise(resolve => {
+      const check = () => (window.supabase && window.Chart) ? resolve() : setTimeout(check, 150);
+      check();
+    });
+  }
+
+  async _carregarTudo() {
+    this._showSkeletons();
+    try {
+      await Promise.all([
+        this._carregarMes(),
+        this._carregarUltimos7(),
+        this._carregarReceitasPrevistas(),
+        this._carregarDividas(),
+        this._carregarMetas(),
+        this._carregarTransacoes(0, true),
+        this._carregarLembretes(),
+      ]);
+      this._renderSaldoHero();
+      this._renderMiniCards();
+      this._renderInsight();
+      this._renderCharts();
+      this._renderReceitasPrevistas();
+      this._renderDividas();
+      this._renderMetas();
+      this._renderLembretes();
+      this._hideSkeletons();
+      el('last-update').textContent = new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+    } catch (err) {
+      console.error('[Max Dashboard]', err);
+      this._hideSkeletons();
+      this._showError('Erro ao carregar dados. Verifique sua conexão.');
     }
-  });
+  }
+
+  _showSkeletons() {
+    ['hero-skeleton','rec-sk','desp-sk','donut-sk','bar-sk','rp-sk','div-sk','meta-sk','lem-sk'].forEach(id => {
+      const e = el(id); if (e) e.style.display = '';
+    });
+    ['hero-content','rec-content','desp-content','donut-empty','donut-content',
+     'bar-content','rp-empty','rp-list','div-empty','div-content','meta-empty','meta-list',
+     'tx-empty','tx-list','load-more-btn','lem-empty','lem-list','insight-box'].forEach(id => {
+      const e = el(id); if (e) e.style.display = 'none';
+    });
+  }
+
+  _hideSkeletons() {
+    ['hero-skeleton','rec-sk','desp-sk','donut-sk','bar-sk','rp-sk','div-sk','meta-sk','lem-sk'].forEach(id => {
+      hide(id);
+    });
+  }
+
+  // ── Data ──────────────────────────────────────────────────────────────────────
+
+  async _carregarMes() {
+    const agora = new Date();
+    const ano = agora.getFullYear(), mes = agora.getMonth();
+    const inicioMes = `${ano}-${String(mes+1).padStart(2,'0')}-01`;
+    const fimMes = new Date(ano, mes+1, 0).toISOString().split('T')[0];
+    const antDt = new Date(ano, mes-1, 1);
+    const inicioAnt = `${antDt.getFullYear()}-${String(antDt.getMonth()+1).padStart(2,'0')}-01`;
+    const fimAnt = new Date(ano, mes, 0).toISOString().split('T')[0];
+
+    const [r1, r2] = await Promise.all([
+      this.db.from('transacoes').select('tipo,valor,categoria').gte('data_transacao', inicioMes).lte('data_transacao', fimMes),
+      this.db.from('transacoes').select('tipo,valor').gte('data_transacao', inicioAnt).lte('data_transacao', fimAnt),
+    ]);
+
+    const tx = r1.data || [], txAnt = r2.data || [];
+    this.totalReceitas  = tx.filter(t => t.tipo==='receita').reduce((s,t) => s+Number(t.valor), 0);
+    this.totalDespesas  = tx.filter(t => t.tipo==='despesa').reduce((s,t) => s+Number(t.valor), 0);
+    this.recMesAnt      = txAnt.filter(t => t.tipo==='receita').reduce((s,t) => s+Number(t.valor), 0);
+    this.despMesAnt     = txAnt.filter(t => t.tipo==='despesa').reduce((s,t) => s+Number(t.valor), 0);
+    this.saldo          = this.totalReceitas - this.totalDespesas;
+
+    const catMap = {};
+    tx.filter(t => t.tipo==='despesa').forEach(t => {
+      const k = t.categoria || 'Outros';
+      catMap[k] = (catMap[k] || 0) + Number(t.valor);
+    });
+    this.categoriasGastos = Object.entries(catMap).map(([nome,valor]) => ({nome,valor})).sort((a,b) => b.valor-a.valor);
+
+    const diasPassados = agora.getDate();
+    const totalDias = new Date(ano, mes+1, 0).getDate();
+    this.burnRate = diasPassados > 0 ? this.totalDespesas / diasPassados : 0;
+    this.projecaoFimMes = this.burnRate * totalDias;
+    this.percentualMeta = (this.totalReceitas / META_MINIMA) * 100;
+    this.diasRestantes = totalDias - diasPassados;
+  }
+
+  async _carregarUltimos7() {
+    const agora = new Date();
+    const inicio = new Date(agora - 7*86400000).toISOString().split('T')[0];
+    const { data } = await this.db.from('transacoes').select('tipo,valor,data_transacao').gte('data_transacao', inicio).order('data_transacao');
+
+    const dias = {};
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(agora); d.setDate(d.getDate()-i);
+      const key = d.toISOString().split('T')[0];
+      const lbl = d.toLocaleDateString('pt-BR', { weekday:'short' }).replace('.','');
+      dias[key] = { label: lbl.charAt(0).toUpperCase()+lbl.slice(1,3), receitas:0, despesas:0 };
+    }
+    (data||[]).forEach(t => {
+      if (dias[t.data_transacao]) dias[t.data_transacao][t.tipo==='receita'?'receitas':'despesas'] += Number(t.valor);
+    });
+    this.ultimos7Dias = Object.values(dias);
+  }
+
+  async _carregarReceitasPrevistas() {
+    const hoje = new Date().toISOString().split('T')[0];
+    const { data } = await this.db.from('receitas_previstas').select('*').in('status',['pendente','atrasada']).order('data_prevista').limit(6);
+    this.receitasPrevistas = (data||[]).map(r => ({
+      ...r,
+      isAtrasada: r.status==='atrasada' || (r.status==='pendente' && r.data_prevista < hoje),
+    })).slice(0, 5);
+    this.totalPrevistasPendentes = (data||[]).reduce((s,r) => s+Number(r.valor), 0);
+  }
+
+  async _carregarDividas() {
+    const { data } = await this.db.from('dividas').select('*').eq('status','ativa');
+    this.dividas = data || [];
+  }
+
+  async _carregarMetas() {
+    const { data } = await this.db.from('metas_financeiras').select('*').eq('status','ativa');
+    this.metas = data || [];
+  }
+
+  async _carregarTransacoes(offset, clear) {
+    const agora = new Date();
+    let inicio;
+    if (this.tabAtiva==='hoje') {
+      inicio = agora.toISOString().split('T')[0];
+    } else if (this.tabAtiva==='semana') {
+      inicio = new Date(agora-7*86400000).toISOString().split('T')[0];
+    } else {
+      inicio = `${agora.getFullYear()}-${String(agora.getMonth()+1).padStart(2,'0')}-01`;
+    }
+    const { data } = await this.db.from('transacoes').select('*').gte('data_transacao', inicio)
+      .order('data_transacao', { ascending:false })
+      .order('criado_em', { ascending:false })
+      .range(offset, offset+20);
+
+    const lista = data || [];
+    if (clear) this.transacoes = [];
+    this.transacoes = [...this.transacoes, ...lista.slice(0,20)];
+    this.hasMore = lista.length > 20;
+    this.transacoesOffset = offset;
+  }
+
+  async _carregarLembretes() {
+    const { data } = await this.db.from('lembretes').select('*').eq('enviado',false)
+      .gte('data_hora', new Date().toISOString()).order('data_hora').limit(5);
+    this.lembretes = data || [];
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────────
+
+  _renderSaldoHero() {
+    el('saldo-val').textContent = fmt(this.saldo);
+    const pct = Math.min(Math.round(this.percentualMeta), 100);
+    el('meta-bar').style.width = pct + '%';
+    el('meta-label').textContent = pct + '% da meta mínima · ' + this.diasRestantes + ' dias restantes';
+    el('hero-content').style.display = '';
+  }
+
+  _renderMiniCards() {
+    el('rec-val').textContent = fmt(this.totalReceitas);
+    el('desp-val').textContent = fmt(this.totalDespesas);
+
+    const recPct = this.recMesAnt ? Math.round((this.totalReceitas - this.recMesAnt) / this.recMesAnt * 100) : 0;
+    const despPct = this.despMesAnt ? Math.round((this.totalDespesas - this.despMesAnt) / this.despMesAnt * 100) : 0;
+
+    const rb = el('rec-badge');
+    rb.textContent = (recPct>=0?'+':'')+recPct+'% vs mês ant.';
+    rb.style.background = recPct>=0 ? '#EAF3DE' : '#FCEBEB';
+    rb.style.color = recPct>=0 ? '#3B6D11' : '#A32D2D';
+
+    const db2 = el('desp-badge');
+    db2.textContent = (despPct>=0?'+':'')+despPct+'% vs mês ant.';
+    db2.style.background = despPct<=0 ? '#EAF3DE' : '#FCEBEB';
+    db2.style.color = despPct<=0 ? '#3B6D11' : '#A32D2D';
+
+    showBlock('rec-content'); showBlock('desp-content');
+  }
+
+  _renderInsight() {
+    if (this.burnRate > 0 || this.totalPrevistasPendentes > 0) {
+      el('insight-text').innerHTML =
+        'Seu gasto médio é <strong>'+fmt(this.burnRate)+'/dia</strong>. No ritmo atual, você vai gastar <strong>'+
+        fmt(this.projecaoFimMes)+'</strong> até o fim do mês. Tem <strong>'+
+        fmt(this.totalPrevistasPendentes)+'</strong> em receitas previstas pendentes.';
+      el('insight-box').style.display = 'flex';
+    }
+  }
+
+  _renderCharts() {
+    // Donut
+    if (this.categoriasGastos.length === 0) {
+      showBlock('donut-empty');
+    } else {
+      showBlock('donut-content');
+      if (this.donutChart) { this.donutChart.destroy(); this.donutChart = null; }
+      const canvas = el('donut-chart');
+      if (canvas && window.Chart) {
+        this.donutChart = new Chart(canvas, {
+          type: 'doughnut',
+          data: {
+            labels: this.categoriasGastos.map(c => c.nome),
+            datasets: [{ data: this.categoriasGastos.map(c => c.valor), backgroundColor: CORES_DONUT.slice(0, this.categoriasGastos.length), borderWidth:0, hoverOffset:4 }],
+          },
+          options: {
+            cutout:'72%', responsive:true, maintainAspectRatio:true,
+            plugins: {
+              legend: { display:false },
+              tooltip: { callbacks: { label: ctx => ' '+ctx.label+': '+Number(ctx.raw).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) } },
+            },
+          },
+        });
+      }
+      const legend = el('donut-legend');
+      legend.innerHTML = this.categoriasGastos.map((c,i) =>
+        `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(0,0,0,0.045);">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="width:8px;height:8px;border-radius:50%;background:${CORES_DONUT[i%6]};flex-shrink:0;"></div>
+            <span style="font-size:13px;color:#1A1A2E;">${c.nome}</span>
+          </div>
+          <span style="font-size:13px;font-weight:500;color:#1A1A2E;font-variant-numeric:tabular-nums;">${fmt(c.valor)}</span>
+        </div>`
+      ).join('');
+    }
+
+    // Bar
+    showBlock('bar-content');
+    if (this.barChart) { this.barChart.destroy(); this.barChart = null; }
+    const barCanvas = el('bar-chart');
+    if (barCanvas && window.Chart) {
+      this.barChart = new Chart(barCanvas, {
+        type: 'bar',
+        data: {
+          labels: this.ultimos7Dias.map(d => d.label),
+          datasets: [
+            { label:'Receitas', data: this.ultimos7Dias.map(d => d.receitas), backgroundColor:'#378ADD', borderRadius:4, barPercentage:0.6, categoryPercentage:0.8 },
+            { label:'Despesas', data: this.ultimos7Dias.map(d => d.despesas), backgroundColor:'#FCEBEB', borderColor:'#E0ADAD', borderWidth:1, borderRadius:4, barPercentage:0.6, categoryPercentage:0.8 },
+          ],
+        },
+        options: {
+          responsive:true, maintainAspectRatio:false,
+          plugins: {
+            legend: { display:false },
+            tooltip: { callbacks: { label: ctx => ' '+ctx.dataset.label+': '+Number(ctx.raw).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) } },
+          },
+          scales: {
+            x: { grid:{display:false}, border:{display:false}, ticks:{font:{size:10,family:'Inter'},color:'#9CA3AF'} },
+            y: { display:false },
+          },
+        },
+      });
+    }
+  }
+
+  _renderReceitasPrevistas() {
+    if (this.receitasPrevistas.length === 0) {
+      showBlock('rp-empty');
+      return;
+    }
+    const list = el('rp-list');
+    list.innerHTML = this.receitasPrevistas.map(r => {
+      const n = NEGOCIO_MAP[r.tipo_negocio] || NEGOCIO_MAP.pessoal;
+      const isAtras = r.isAtrasada;
+      return `<div style="background:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);border-left:${isAtras?'3px solid #A32D2D':'3px solid transparent'};display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:500;color:#1A1A2E;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.descricao||''}</div>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="padding:2px 8px;border-radius:99px;font-size:11px;font-weight:500;background:${n.bg};color:${n.color};">${n.label}</span>
+            <span style="font-size:11px;color:#9CA3AF;display:flex;align-items:center;gap:3px;"><i class="ti ti-calendar" style="font-size:11px;"></i>${fmtDate(r.data_prevista)}</span>
+          </div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="font-size:14px;font-weight:600;color:#185FA5;font-variant-numeric:tabular-nums;margin-bottom:5px;">${fmt(r.valor)}</div>
+          <span style="padding:2px 8px;border-radius:99px;font-size:11px;font-weight:500;background:${isAtras?'#FCEBEB':'#FAEEDA'};color:${isAtras?'#A32D2D':'#BA7517'};">${isAtras?'Atrasada':'Pendente'}</span>
+        </div>
+      </div>`;
+    }).join('');
+    list.style.display = 'flex';
+  }
+
+  _renderDividas() {
+    if (this.dividas.length === 0) {
+      showBlock('div-empty');
+      return;
+    }
+    const list = el('div-list');
+    list.innerHTML = this.dividas.map(d => {
+      const pago = Number(d.valor_pago)||0, total = Math.max(Number(d.valor_total)||0, 1);
+      const pct = Math.round(pago/total*100);
+      const cor = pct<30?'#A32D2D':pct<70?'#BA7517':'#185FA5';
+      return `<div style="background:#fff;border-radius:12px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
+          <div style="font-size:13px;font-weight:500;color:#1A1A2E;max-width:58%;">${d.descricao||''}</div>
+          <div style="text-align:right;">
+            <div style="font-size:13px;font-weight:600;color:#1A1A2E;font-variant-numeric:tabular-nums;">${fmt(total-pago)}</div>
+            <div style="font-size:11px;color:#9CA3AF;font-variant-numeric:tabular-nums;">/ ${fmt(total)}</div>
+          </div>
+        </div>
+        <div style="font-size:12px;color:#9CA3AF;margin-bottom:9px;">${d.credor||''}${d.parcela_mensal?(' · '+fmt(d.parcela_mensal)+'/mês'):''}${d.dia_vencimento?(' · dia '+d.dia_vencimento):''}</div>
+        <div style="background:rgba(0,0,0,0.06);border-radius:99px;height:6px;overflow:hidden;">
+          <div style="width:${pct}%;height:100%;background:${cor};border-radius:99px;transition:width 0.5s ease;"></div>
+        </div>
+        <div style="font-size:11px;color:#9CA3AF;margin-top:5px;text-align:right;">${pct}% pago</div>
+      </div>`;
+    }).join('');
+
+    const tot = this.dividas.reduce((a,d) => a+Number(d.valor_total), 0);
+    const pago = this.dividas.reduce((a,d) => a+Number(d.valor_pago), 0);
+    const pctTotal = tot > 0 ? Math.round(pago/tot*100) : 0;
+    const restante = this.dividas.reduce((a,d) => a+Math.max(0,Number(d.valor_total)-Number(d.valor_pago)), 0);
+    el('div-total-pct').textContent = 'Total em dívidas · '+pctTotal+'% pago';
+    el('div-total-val').textContent = fmt(restante);
+
+    showBlock('div-content');
+  }
+
+  _renderMetas() {
+    if (this.metas.length === 0) {
+      showBlock('meta-empty');
+      return;
+    }
+    const list = el('meta-list');
+    list.innerHTML = this.metas.map(m => {
+      const atual = Number(m.valor_atual)||0, alvo = Math.max(Number(m.valor_alvo)||0, 1);
+      const pct = Math.min(Math.round(atual/alvo*100), 100);
+      const cor = pct<30?'#BA7517':pct<70?'#185FA5':'#3B6D11';
+      const n = NEGOCIO_MAP[m.tipo_negocio] || NEGOCIO_MAP.pessoal;
+      return `<div style="background:#fff;border-radius:12px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;gap:8px;">
+          <div style="font-size:13px;font-weight:500;color:#1A1A2E;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${m.descricao||''}</div>
+          ${m.tipo_negocio?`<span style="padding:2px 8px;border-radius:99px;font-size:11px;font-weight:500;background:${n.bg};color:${n.color};flex-shrink:0;">${n.label}</span>`:''}
+        </div>
+        <div style="background:rgba(0,0,0,0.06);border-radius:99px;height:7px;overflow:hidden;margin-bottom:7px;">
+          <div style="width:${pct}%;height:100%;background:${cor};border-radius:99px;transition:width 0.5s ease;"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div style="font-size:12px;color:#9CA3AF;font-variant-numeric:tabular-nums;">${fmt(atual)} de ${fmt(alvo)}</div>
+          <div style="font-size:12px;font-weight:600;color:#185FA5;">${pct}%</div>
+        </div>
+      </div>`;
+    }).join('');
+    list.style.display = 'flex';
+  }
+
+  _renderTransacoes() {
+    const notifBadge = el('notif-badge');
+
+    if (this.transacoes.length === 0) {
+      showBlock('tx-empty');
+      el('tx-list').style.display = 'none';
+      hide('load-more-btn');
+      return;
+    }
+    hide('tx-empty');
+    const list = el('tx-list');
+    list.innerHTML = this.transacoes.map(t => {
+      const isR = t.tipo==='receita';
+      const ic = icone(t.categoria);
+      return `<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid rgba(0,0,0,0.04);">
+        <div style="width:36px;height:36px;border-radius:50%;background:${isR?'#EAF3DE':'#FCEBEB'};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="${ic}" style="font-size:16px;color:${isR?'#3B6D11':'#A32D2D'};"></i>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:500;color:#1A1A2E;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.descricao||''}</div>
+          <div style="font-size:12px;color:#9CA3AF;">${t.categoria||''} · ${fmtDate(t.data_transacao)}</div>
+        </div>
+        <div style="font-size:13px;font-weight:600;color:${isR?'#3B6D11':'#A32D2D'};font-variant-numeric:tabular-nums;white-space:nowrap;flex-shrink:0;">${isR?'+ ':'− '}${fmt(Math.abs(Number(t.valor)))}</div>
+      </div>`;
+    }).join('');
+    list.style.display = 'block';
+    el('load-more-btn').style.display = this.hasMore ? 'block' : 'none';
+  }
+
+  _renderLembretes() {
+    if (this.lembretes.length === 0) {
+      showBlock('lem-empty');
+      return;
+    }
+    const notifBadge = el('notif-badge');
+    notifBadge.style.display = 'flex';
+    notifBadge.textContent = this.lembretes.length;
+
+    const list = el('lem-list');
+    list.innerHTML = this.lembretes.map(l => {
+      const diffH = (new Date(l.data_hora) - new Date()) / 3600000;
+      const cor = diffH<2?'#A32D2D':diffH<26?'#BA7517':'#185FA5';
+      const dt = new Date(l.data_hora).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+      return `<div style="display:flex;align-items:flex-start;gap:12px;padding:13px 14px;border-bottom:1px solid rgba(0,0,0,0.04);">
+        <div style="width:8px;height:8px;border-radius:50%;background:${cor};flex-shrink:0;margin-top:5px;"></div>
+        <div>
+          <div style="font-size:13px;font-weight:500;color:#1A1A2E;line-height:1.35;">${l.descricao||''}</div>
+          <div style="font-size:12px;color:#9CA3AF;margin-top:2px;">${dt}</div>
+        </div>
+      </div>`;
+    }).join('');
+    list.style.display = 'block';
+  }
+
+  // ── Tabs ──────────────────────────────────────────────────────────────────────
+
+  async mudarTab(tab) {
+    this.tabAtiva = tab;
+    ['hoje','semana','mes'].forEach(t => {
+      const btn = el('tab-'+t);
+      if (btn) {
+        btn.style.background = t===tab ? '#185FA5' : 'transparent';
+        btn.style.color = t===tab ? '#fff' : '#6B7280';
+        btn.style.fontWeight = t===tab ? '500' : '400';
+      }
+    });
+    this.transacoes = [];
+    this.hasMore = false;
+    el('tx-list').innerHTML = '';
+    await this._carregarTransacoes(0, true);
+    this._renderTransacoes();
+  }
+
+  async carregarMais() {
+    await this._carregarTransacoes(this.transacoesOffset + 20, false);
+    this._renderTransacoes();
+  }
+
+  // ── Realtime ──────────────────────────────────────────────────────────────────
+
+  _setupRealtime() {
+    this.db.channel('max_rt')
+      .on('postgres_changes', { event:'*', schema:'public', table:'transacoes' }, () => {
+        this._carregarTudo();
+      })
+      .subscribe(status => {
+        this.realtimeConnected = status === 'SUBSCRIBED';
+        const dot = el('rt-dot');
+        if (dot) {
+          dot.style.background = this.realtimeConnected ? '#4ade80' : '#9CA3AF';
+          dot.style.animation = this.realtimeConnected ? 'rt-pulse 2s infinite' : 'none';
+        }
+      });
+  }
+
+  _showError(msg) {
+    el('toast-msg').textContent = msg;
+    el('toast-error').style.display = 'flex';
+    setTimeout(() => { el('toast-error').style.display = 'none'; }, 5000);
+  }
 }
 
-function dividas(){
-  var list=[
-    {n:'Adijo (nome sujo)',t:300,s:300,c:'bar-red',p:true},
-    {n:'Americanas',t:6000,s:6000,c:'bar-red'},
-    {n:'CNPJ esposa',t:8000,s:8000,c:'bar-red'},
-    {n:'Mercado Pago',t:20000,s:20000,c:'bar-yellow'},
-    {n:'Infinity Pay',t:14000,s:14000,c:'bar-yellow'},
-    {n:'Condominio',t:4200,s:4200,c:'bar-yellow'},
-    {n:'Fernando',t:17219.98,s:6719.98,c:'bar-purple'},
-    {n:'MRV',t:46000,s:30000,c:'bar-purple'},
-    {n:'Caixa',t:4680,s:2680,c:'bar-purple'},
-  ];
-  document.getElementById('dividas').innerHTML=list.map(function(d){
-    var pct=Math.round(((d.t-d.s)/d.t)*100);
-    return '<div class="divida-item">'
-      +'<div class="divida-header">'
-      +'<span>'+d.n+(d.p?'<span class="tag">!</span>':'')+'</span>'
-      +'<span style="color:#64748b">'+r(d.s)+'</span>'
-      +'</div>'
-      +'<div class="progress"><div class="bar '+d.c+'" style="width:'+pct+'%"></div></div>'
-      +'</div>';
-  }).join('');
-}
+const app = new MaxDashboard();
 
-async function lembretes(){
-  var res=await db.from('lembretes').select('*').eq('enviado',false).gte('data_hora',new Date().toISOString()).order('data_hora',{ascending:true}).limit(5);
-  var data=res.data||[];
-  var el=document.getElementById('lembretes');
-  if(!data.length){el.innerHTML='<div class="empty">nenhum</div>';return;}
-  el.innerHTML=data.map(function(l){
-    var dt=new Date(l.data_hora).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
-    return '<div class="lembrete-row"><span>'+l.descricao+'</span><span style="font-size:10px;color:#64748b;margin-left:8px;white-space:nowrap">'+dt+'</span></div>';
-  }).join('');
-}
+// After data loads, also render transactions and bind to existing hide/show logic
+const origCarregarTudo = app._carregarTudo.bind(app);
+app._carregarTudo = async function() {
+  await origCarregarTudo();
+  app._renderTransacoes();
+};
 
-async function extrato(){
-  var rg=range(periodo);
-  var res=await db.from('transacoes').select('*').eq('confirmado',true).gte('data_transacao',rg.a).lte('data_transacao',rg.b).order('data_transacao',{ascending:false}).order('criado_em',{ascending:false});
-  var data=res.data||[];
-  var tbody=document.getElementById('tbody');
-  if(!data.length){tbody.innerHTML='<tr><td colspan="6" class="empty">Sem transacoes</td></tr>';return;}
-  tbody.innerHTML=data.map(function(t){
-    var rec=t.tipo==='receita';
-    return '<tr>'
-      +'<td style="color:#64748b">'+d(t.data_transacao)+'</td>'
-      +'<td>'+( t.descricao||'-')+'</td>'
-      +'<td style="color:#64748b">'+(t.categoria||'-')+'</td>'
-      +'<td style="color:#4b5563">'+(t.tipo_negocio||'-')+'</td>'
-      +'<td><span class="badge '+(rec?'badge-r':'badge-d')+'">'+t.tipo+'</span></td>'
-      +'<td style="text-align:right;font-weight:600" class="'+(rec?'green':'red')+'">'+r(t.valor)+'</td>'
-      +'</tr>';
-  }).join('');
-}
-
-async function init(){
-  await Promise.all([cards(),histChart(),lembretes()]);
-  dividas();
-  extrato();
-  document.getElementById('sync').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR');
-
-  db.channel('rt-tx').on('postgres_changes',{event:'*',schema:'public',table:'transacoes'},function(){
-    cards(); extrato();
-    document.getElementById('sync').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR');
-  }).subscribe();
-  db.channel('rt-lm').on('postgres_changes',{event:'*',schema:'public',table:'lembretes'},lembretes).subscribe();
-}
-
-init();
-setInterval(function(){ cards(); extrato(); lembretes(); },60000);
+app.init();
 </script>
 </body>
 </html>
