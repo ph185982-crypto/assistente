@@ -369,6 +369,7 @@ class MaxDashboard {
       this._renderReceitasPrevistas();
       this._renderDividas();
       this._renderMetas();
+      this._renderTransacoes();
       this._renderLembretes();
       this._hideSkeletons();
       el('last-update').textContent = new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
@@ -773,12 +774,12 @@ class MaxDashboard {
     this._renderTransacoes();
   }
 
-  // ── Realtime ──────────────────────────────────────────────────────────────────
+  // ── Realtime + polling ───────────────────────────────────────────────────────
 
   _setupRealtime() {
     this.db.channel('max_rt')
       .on('postgres_changes', { event:'*', schema:'public', table:'transacoes' }, () => {
-        this._carregarTudo();
+        this._refreshSilently();
       })
       .subscribe(status => {
         this.realtimeConnected = status === 'SUBSCRIBED';
@@ -788,6 +789,36 @@ class MaxDashboard {
           dot.style.animation = this.realtimeConnected ? 'rt-pulse 2s infinite' : 'none';
         }
       });
+
+    // Fallback: polling a cada 30s (garante atualização mesmo sem realtime habilitado)
+    setInterval(() => this._refreshSilently(), 30000);
+  }
+
+  // Atualiza dados sem mostrar skeletons (para realtime/polling)
+  async _refreshSilently() {
+    try {
+      await Promise.all([
+        this._carregarMes(),
+        this._carregarUltimos7(),
+        this._carregarReceitasPrevistas(),
+        this._carregarDividas(),
+        this._carregarMetas(),
+        this._carregarTransacoes(0, true),
+        this._carregarLembretes(),
+      ]);
+      this._renderSaldoHero();
+      this._renderMiniCards();
+      this._renderInsight();
+      this._renderCharts();
+      this._renderReceitasPrevistas();
+      this._renderDividas();
+      this._renderMetas();
+      this._renderTransacoes();
+      this._renderLembretes();
+      el('last-update').textContent = new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+    } catch(err) {
+      console.error('[Max Dashboard] refresh silencioso falhou:', err);
+    }
   }
 
   _showError(msg) {
@@ -798,14 +829,6 @@ class MaxDashboard {
 }
 
 const app = new MaxDashboard();
-
-// After data loads, also render transactions and bind to existing hide/show logic
-const origCarregarTudo = app._carregarTudo.bind(app);
-app._carregarTudo = async function() {
-  await origCarregarTudo();
-  app._renderTransacoes();
-};
-
 app.init();
 </script>
 </body>
