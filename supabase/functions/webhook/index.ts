@@ -1,4 +1,4 @@
-// Zero-import self-contained webhook — Supabase REST API + Gemini 2.0 Flash
+// Zero-import self-contained webhook — Supabase REST API + Groq (Llama 3.3 70B)
 // No esm.sh imports; uses native Deno fetch + Supabase REST directly
 
 // ── Supabase REST helpers ─────────────────────────────────────────────────────
@@ -175,145 +175,139 @@ function notificarPedro(texto: string) {
   return sendWhatsApp(Deno.env.get('MEU_NUMERO')!, texto);
 }
 
-// ── Gemini ─────────────────────────────────────────────────────────────────────
+// ── Groq / Llama 3.3 70B ─────────────────────────────────────────────────────
 
-const MODEL      = 'gemini-2.0-flash';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
-const FUNCTION_DECLARATIONS = [
+const TOOLS = [
   {
-    name: 'registrar_transacao',
-    description: 'Registra uma receita ou despesa imediatamente. Após registrar, mostra mini-extrato do dia.',
-    parameters: {
-      type: 'OBJECT',
-      properties: {
-        tipo:         { type: 'STRING', enum: ['receita', 'despesa'] },
-        valor:        { type: 'NUMBER' },
-        descricao:    { type: 'STRING' },
-        categoria: {
-          type: 'STRING',
-          enum: ['Moradia','Transporte','Alimentação','Saúde','Lazer','Vestuário',
-            'Assinaturas','Negócios','Dívidas/Parcelas','Fornecedor','Marketing',
-            'Salário','Renda Variável','Outros'],
+    type: 'function',
+    function: {
+      name: 'registrar_transacao',
+      description: 'Registra uma receita ou despesa imediatamente. Após registrar, mostra mini-extrato do dia.',
+      parameters: {
+        type: 'object',
+        properties: {
+          tipo:         { type: 'string', enum: ['receita', 'despesa'] },
+          valor:        { type: 'number' },
+          descricao:    { type: 'string' },
+          categoria: {
+            type: 'string',
+            enum: ['Moradia','Transporte','Alimentação','Saúde','Lazer','Vestuário',
+              'Assinaturas','Negócios','Dívidas/Parcelas','Fornecedor','Marketing',
+              'Salário','Renda Variável','Outros'],
+          },
+          tipo_negocio: { type: 'string', enum: ['pessoal','vendedoria','lukaizen','geral'] },
+          data:         { type: 'string', description: 'YYYY-MM-DD' },
+          empresa:      { type: 'string' },
         },
-        tipo_negocio: { type: 'STRING', enum: ['pessoal','vendedoria','lukaizen','geral'] },
-        data:         { type: 'STRING', description: 'YYYY-MM-DD' },
-        empresa:      { type: 'STRING' },
+        required: ['tipo','valor','descricao','categoria','tipo_negocio'],
       },
-      required: ['tipo','valor','descricao','categoria','tipo_negocio'],
     },
   },
   {
-    name: 'desfazer_ultima',
-    description: 'Apaga a última transação registrada se Pedro pedir para desfazer ou cancelar',
-    parameters: {
-      type: 'OBJECT',
-      properties: { id: { type: 'STRING', description: 'ID da transação a apagar' } },
-      required: ['id'],
-    },
-  },
-  {
-    name: 'criar_lembrete',
-    description: 'Cria lembrete ou evento na agenda',
-    parameters: {
-      type: 'OBJECT',
-      properties: {
-        descricao:  { type: 'STRING' },
-        data_hora:  { type: 'STRING', description: 'ISO 8601 fuso Brasília UTC-3' },
-        recorrente: { type: 'BOOLEAN' },
-        frequencia: { type: 'STRING', enum: ['diario','semanal','mensal'] },
+    type: 'function',
+    function: {
+      name: 'desfazer_ultima',
+      description: 'Apaga a última transação registrada se Pedro pedir para desfazer ou cancelar',
+      parameters: {
+        type: 'object',
+        properties: { id: { type: 'string', description: 'ID da transação a apagar' } },
+        required: ['id'],
       },
-      required: ['descricao','data_hora'],
     },
   },
   {
-    name: 'consultar_financas',
-    description: 'Consulta dados financeiros. Use para qualquer pergunta sobre gastos, saldo, receitas.',
-    parameters: {
-      type: 'OBJECT',
-      properties: {
-        periodo:      { type: 'STRING', enum: ['hoje','semana','mes','mes_passado','ontem'] },
-        tipo_negocio: { type: 'STRING', enum: ['pessoal','vendedoria','lukaizen','geral','todos'] },
-        categoria:    { type: 'STRING' },
+    type: 'function',
+    function: {
+      name: 'criar_lembrete',
+      description: 'Cria lembrete ou evento na agenda',
+      parameters: {
+        type: 'object',
+        properties: {
+          descricao:  { type: 'string' },
+          data_hora:  { type: 'string', description: 'ISO 8601 fuso Brasília UTC-3' },
+          recorrente: { type: 'boolean' },
+          frequencia: { type: 'string', enum: ['diario','semanal','mensal'] },
+        },
+        required: ['descricao','data_hora'],
       },
-      required: ['periodo'],
     },
   },
   {
-    name: 'salvar_informacao',
-    description: 'Salva info importante sobre Pedro para contexto futuro (metas, rotina, negócios, contatos)',
-    parameters: {
-      type: 'OBJECT',
-      properties: {
-        chave:     { type: 'STRING' },
-        valor:     { type: 'STRING' },
-        categoria: { type: 'STRING', enum: ['financeiro','negocio','pessoal','meta','contato','rotina','outros'] },
+    type: 'function',
+    function: {
+      name: 'consultar_financas',
+      description: 'Consulta dados financeiros. Use para qualquer pergunta sobre gastos, saldo, receitas.',
+      parameters: {
+        type: 'object',
+        properties: {
+          periodo:      { type: 'string', enum: ['hoje','semana','mes','mes_passado','ontem'] },
+          tipo_negocio: { type: 'string', enum: ['pessoal','vendedoria','lukaizen','geral','todos'] },
+          categoria:    { type: 'string' },
+        },
+        required: ['periodo'],
       },
-      required: ['chave','valor','categoria'],
     },
   },
   {
-    name: 'listar_lembretes',
-    description: 'Lista os próximos lembretes agendados',
-    parameters: { type: 'OBJECT', properties: {} },
+    type: 'function',
+    function: {
+      name: 'salvar_informacao',
+      description: 'Salva info importante sobre Pedro para contexto futuro (metas, rotina, negócios, contatos)',
+      parameters: {
+        type: 'object',
+        properties: {
+          chave:     { type: 'string' },
+          valor:     { type: 'string' },
+          categoria: { type: 'string', enum: ['financeiro','negocio','pessoal','meta','contato','rotina','outros'] },
+        },
+        required: ['chave','valor','categoria'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'listar_lembretes',
+      description: 'Lista os próximos lembretes agendados',
+      parameters: { type: 'object', properties: {} },
+    },
   },
 ];
 
-const GEMINI_TOOLS = [{ functionDeclarations: FUNCTION_DECLARATIONS }];
-
 // deno-lint-ignore no-explicit-any
-async function callGemini(systemPrompt: string, contents: any[], geminiKey: string): Promise<any> {
-  const body = {
-    systemInstruction: { parts: [{ text: systemPrompt }] },
-    contents,
-    tools: GEMINI_TOOLS,
-    toolConfig: { functionCallingConfig: { mode: 'AUTO' } },
-    generationConfig: { maxOutputTokens: 1200, temperature: 0.7 },
-  };
+async function callGroq(messages: any[], groqKey: string) {
+  const res = await fetch(GROQ_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${groqKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      messages,
+      tools: TOOLS,
+      tool_choice: 'auto',
+      max_tokens: 1200,
+      temperature: 0.7,
+    }),
+  });
 
-  // Retry com backoff exponencial para erros 429
-  const delays = [2000, 4000, 8000];
-  let lastErr = '';
-
-  for (let attempt = 0; attempt <= delays.length; attempt++) {
-    const res = await fetch(`${GEMINI_URL}?key=${geminiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-
-    if (res.status === 429) {
-      if (attempt < delays.length) {
-        await new Promise(r => setTimeout(r, delays[attempt]));
-        continue;
-      }
-      lastErr = 'limite de uso do Gemini atingido — tente novamente em alguns minutos';
-      break;
-    }
-
-    if (!res.ok) {
-      const txt = await res.text();
-      throw new Error(`Gemini API error ${res.status}: ${txt}`);
-    }
-
-    const json = await res.json();
-    const candidate = json.candidates?.[0];
-    // deno-lint-ignore no-explicit-any
-    const parts: any[] = candidate?.content?.parts ?? [];
-    // deno-lint-ignore no-explicit-any
-    const functionCalls = parts.filter((p: any) => p.functionCall).map((p: any) => p.functionCall);
-    // deno-lint-ignore no-explicit-any
-    const text = parts.filter((p: any) => p.text).map((p: any) => p.text).join('');
-
-    return {
-      text,
-      functionCalls,
-      modelContent: candidate?.content ?? { role: 'model', parts: [] },
-      finishReason: candidate?.finishReason as string,
-    };
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Groq API error ${res.status}: ${err}`);
   }
 
-  throw new Error(lastErr || 'Gemini indisponível');
+  const json = await res.json();
+  const msg = json.choices?.[0]?.message;
+  return {
+    text: msg?.content ?? '',
+    toolCalls: msg?.tool_calls ?? [],
+    message: msg,
+    finishReason: json.choices?.[0]?.finish_reason as string,
+  };
 }
 
 // ── System prompt ─────────────────────────────────────────────────────────────
@@ -537,25 +531,6 @@ async function enviarResposta(texto: string) {
   for (const parte of partes) await notificarPedro(parte.trim());
 }
 
-// ── Histórico → formato Gemini ────────────────────────────────────────────────
-
-// deno-lint-ignore no-explicit-any
-function toGeminiContents(historico: any[]): any[] {
-  // deno-lint-ignore no-explicit-any
-  const contents: any[] = [];
-  for (const msg of historico) {
-    const role = msg.role === 'assistant' ? 'model' : 'user';
-    const text = typeof msg.content === 'string' ? msg.content : '';
-    if (!text.trim()) continue;
-    if (contents.length > 0 && contents[contents.length - 1].role === role) {
-      contents[contents.length - 1].parts[0].text += '\n' + text;
-    } else {
-      contents.push({ role, parts: [{ text }] });
-    }
-  }
-  return contents;
-}
-
 // ── Processar mensagem ────────────────────────────────────────────────────────
 
 async function processarMensagem(
@@ -564,9 +539,9 @@ async function processarMensagem(
   tipo: string,
   mediaId: string | null,
 ) {
-  const GEMINI_KEY  = Deno.env.get('GEMINI_API_KEY')!;
-  const SUPA_KEY    = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const SUPA_URL    = Deno.env.get('SUPABASE_URL')!;
+  const GROQ_KEY = Deno.env.get('GROQ_API_KEY')!;
+  const SUPA_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const SUPA_URL = Deno.env.get('SUPABASE_URL')!;
 
   try {
     await salvarMensagem(remetente, 'user', mensagem ?? `[${tipo}]`, SUPA_KEY, SUPA_URL);
@@ -577,35 +552,52 @@ async function processarMensagem(
     ]);
 
     // deno-lint-ignore no-explicit-any
-    const contents: any[] = toGeminiContents(historico.slice(0, -1));
+    const messages: any[] = [{ role: 'system', content: systemPrompt }];
 
+    // Adiciona histórico anterior
+    for (const h of historico.slice(0, -1)) {
+      messages.push({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content });
+    }
+
+    // Mensagem atual (com imagem se houver)
     if (tipo === 'image' && mediaId) {
       const img = await baixarImagemWhatsApp(mediaId);
-      contents.push({
+      messages.push({
         role: 'user',
-        parts: [
-          { inlineData: { mimeType: img.mimeType, data: img.data } },
-          { text: mensagem ?? 'Analise esta imagem. Se for comprovante ou transação financeira, extrai os dados e registra automaticamente.' },
+        content: [
+          { type: 'image_url', image_url: { url: `data:${img.mimeType};base64,${img.data}` } },
+          { type: 'text', text: mensagem ?? 'Analise esta imagem. Se for comprovante ou transação financeira, extrai os dados e registra automaticamente.' },
         ],
       });
     } else {
-      contents.push({ role: 'user', parts: [{ text: mensagem ?? '' }] });
+      messages.push({ role: 'user', content: mensagem ?? '' });
     }
 
-    let resposta = await callGemini(systemPrompt, contents, GEMINI_KEY);
+    let resposta = await callGroq(messages, GROQ_KEY);
     let iteracoes = 0;
 
-    while (resposta.functionCalls.length > 0 && iteracoes < 5) {
+    // Loop de tool calls
+    while (resposta.toolCalls.length > 0 && iteracoes < 5) {
       iteracoes++;
-      contents.push(resposta.modelContent);
-      // deno-lint-ignore no-explicit-any
-      const functionResponses: any[] = [];
-      for (const fc of resposta.functionCalls) {
-        const result = await executarTool(fc.name, fc.args ?? {}, remetente, SUPA_KEY, SUPA_URL);
-        functionResponses.push({ functionResponse: { name: fc.name, response: result } });
+
+      // Adiciona resposta do modelo com tool calls
+      messages.push(resposta.message);
+
+      // Executa todas as tools
+      for (const tc of resposta.toolCalls) {
+        // deno-lint-ignore no-explicit-any
+        let args: Record<string, any> = {};
+        try { args = JSON.parse(tc.function.arguments ?? '{}'); } catch { /* ignore */ }
+
+        const result = await executarTool(tc.function.name, args, remetente, SUPA_KEY, SUPA_URL);
+        messages.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: JSON.stringify(result),
+        });
       }
-      contents.push({ role: 'user', parts: functionResponses });
-      resposta = await callGemini(systemPrompt, contents, GEMINI_KEY);
+
+      resposta = await callGroq(messages, GROQ_KEY);
     }
 
     const textoFinal = resposta.text || 'Entendido.';
