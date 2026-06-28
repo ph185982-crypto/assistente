@@ -1,14 +1,48 @@
-// Self-contained webhook — all _shared code inlined, no relative imports
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+// Zero-import self-contained webhook — Supabase REST API + Gemini 2.0 Flash
+// No esm.sh imports; uses native Deno fetch + Supabase REST directly
 
-// ── Supabase client ───────────────────────────────────────────────────────────
+// ── Supabase REST helpers ─────────────────────────────────────────────────────
 
-const supabase = createClient(
-  Deno.env.get('SUPABASE_URL')!,
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-);
+function supaHeaders(key: string) {
+  return { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
+}
 
-// ── Helpers de número ─────────────────────────────────────────────────────────
+async function dbSelect(table: string, params: string, key: string, url: string) {
+  const res = await fetch(`${url}/rest/v1/${table}?${params}`, { headers: supaHeaders(key) });
+  if (!res.ok) throw new Error(`DB select ${table}: ${await res.text()}`);
+  return res.json();
+}
+
+async function dbInsert(table: string, data: Record<string, unknown>, key: string, url: string) {
+  const res = await fetch(`${url}/rest/v1/${table}`, {
+    method: 'POST',
+    headers: { ...supaHeaders(key), Prefer: 'return=representation' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`DB insert ${table}: ${await res.text()}`);
+  const arr = await res.json();
+  return Array.isArray(arr) ? arr[0] : arr;
+}
+
+async function dbUpsert(table: string, data: Record<string, unknown>, key: string, url: string) {
+  const res = await fetch(`${url}/rest/v1/${table}`, {
+    method: 'POST',
+    headers: { ...supaHeaders(key), Prefer: 'resolution=merge-duplicates,return=representation' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`DB upsert ${table}: ${await res.text()}`);
+  return res.json();
+}
+
+async function dbDelete(table: string, filter: string, key: string, url: string) {
+  const res = await fetch(`${url}/rest/v1/${table}?${filter}`, {
+    method: 'DELETE',
+    headers: supaHeaders(key),
+  });
+  if (!res.ok) throw new Error(`DB delete ${table}: ${await res.text()}`);
+}
+
+// ── Número helpers ─────────────────────────────────────────────────────────────
 
 function normalizarNumero(num: string): string {
   const d = num.replace(/\D/g, '');
@@ -22,96 +56,86 @@ function numerosIguais(a: string, b: string) {
 
 // ── Conversa ──────────────────────────────────────────────────────────────────
 
-async function salvarMensagem(numero: string, role: 'user' | 'assistant', content: string) {
-  await supabase.from('conversas').insert([{ numero: normalizarNumero(numero), role, content }]);
+async function salvarMensagem(numero: string, role: string, content: string, key: string, url: string) {
+  await dbInsert('conversas', { numero: normalizarNumero(numero), role, content }, key, url);
 }
 
-async function buscarHistorico(numero: string, limite = 20) {
-  const { data } = await supabase
-    .from('conversas').select('role, content')
-    .eq('numero', normalizarNumero(numero))
-    .order('criado_em', { ascending: false }).limit(limite);
+async function buscarHistorico(numero: string, limite: number, key: string, url: string) {
+  const data = await dbSelect('conversas',
+    `select=role,content&numero=eq.${encodeURIComponent(normalizarNumero(numero))}&order=criado_em.desc&limit=${limite}`,
+    key, url);
   return (data ?? []).reverse();
 }
 
 // ── Contexto ──────────────────────────────────────────────────────────────────
 
-async function salvarContexto(chave: string, valor: string, categoria = 'geral') {
-  await supabase.from('contexto_pedro').upsert([{
+async function salvarContexto(chave: string, valor: string, categoria: string, key: string, url: string) {
+  await dbUpsert('contexto_pedro', {
     chave, valor, categoria, atualizado_em: new Date().toISOString()
-  }]);
+  }, key, url);
 }
 
-async function buscarTodoContexto() {
-  const { data } = await supabase.from('contexto_pedro').select('*').order('categoria');
-  return data ?? [];
+async function buscarTodoContexto(key: string, url: string) {
+  return dbSelect('contexto_pedro', 'select=*&order=categoria', key, url);
 }
 
 // ── Transações ────────────────────────────────────────────────────────────────
 
 // deno-lint-ignore no-explicit-any
-async function inserirTransacao(dados: Record<string, any>) {
+async function inserirTransacao(dados: Record<string, any>, key: string, url: string) {
   const mes = (dados.data_transacao as string)?.slice(0, 7) ?? new Date().toISOString().slice(0, 7);
-  const { data, error } = await supabase.from('transacoes').insert([{ ...dados, mes }]).select().single();
-  if (error) throw error;
-  return data;
+  return dbInsert('transacoes', { ...dados, mes }, key, url);
 }
 
-async function cancelarTransacao(id: string) {
-  const { error } = await supabase.from('transacoes').delete().eq('id', id);
-  if (error) throw error;
+async function cancelarTransacao(id: string, key: string, url: string) {
+  await dbDelete('transacoes', `id=eq.${id}`, key, url);
 }
 
-async function buscarTransacoesPeriodo(inicio: string, fim: string) {
-  const { data, error } = await supabase.from('transacoes').select('*').eq('confirmado', true)
-    .gte('data_transacao', inicio).lte('data_transacao', fim)
-    .order('data_transacao', { ascending: false });
-  if (error) throw error;
-  return data ?? [];
+async function buscarTransacoesPeriodo(inicio: string, fim: string, key: string, url: string) {
+  return dbSelect('transacoes',
+    `select=*&confirmado=eq.true&data_transacao=gte.${inicio}&data_transacao=lte.${fim}&order=data_transacao.desc`,
+    key, url);
 }
 
-async function buscarTransacoesHoje() {
+async function buscarTransacoesHoje(key: string, url: string) {
   const h = new Date().toISOString().slice(0, 10);
-  return buscarTransacoesPeriodo(h, h);
+  return buscarTransacoesPeriodo(h, h, key, url);
 }
 
-async function buscarTransacoesSemana() {
+async function buscarTransacoesSemana(key: string, url: string) {
   const hoje = new Date();
   const inicio = new Date(hoje); inicio.setDate(hoje.getDate() - hoje.getDay());
-  return buscarTransacoesPeriodo(inicio.toISOString().slice(0, 10), hoje.toISOString().slice(0, 10));
+  return buscarTransacoesPeriodo(inicio.toISOString().slice(0, 10), hoje.toISOString().slice(0, 10), key, url);
 }
 
-async function buscarTransacoesMes(mes?: string) {
+async function buscarTransacoesMes(key: string, url: string, mes?: string) {
   const ref = mes ?? new Date().toISOString().slice(0, 7);
   const inicio = `${ref}-01`;
   const fim = new Date(ref + '-01');
   fim.setMonth(fim.getMonth() + 1); fim.setDate(0);
-  return buscarTransacoesPeriodo(inicio, fim.toISOString().slice(0, 10));
+  return buscarTransacoesPeriodo(inicio, fim.toISOString().slice(0, 10), key, url);
 }
 
-async function buscarTransacoesOntem() {
+async function buscarTransacoesOntem(key: string, url: string) {
   const d = new Date(); d.setDate(d.getDate() - 1);
   const s = d.toISOString().slice(0, 10);
-  return buscarTransacoesPeriodo(s, s);
+  return buscarTransacoesPeriodo(s, s, key, url);
 }
 
 // ── Lembretes ─────────────────────────────────────────────────────────────────
 
 // deno-lint-ignore no-explicit-any
-async function inserirLembrete(dados: Record<string, any>) {
-  const { data, error } = await supabase.from('lembretes').insert([dados]).select().single();
-  if (error) throw error;
-  return data;
+async function inserirLembrete(dados: Record<string, any>, key: string, url: string) {
+  return dbInsert('lembretes', dados, key, url);
 }
 
-async function buscarProximosLembretes() {
-  const { data } = await supabase.from('lembretes').select('*')
-    .eq('enviado', false).gte('data_hora', new Date().toISOString())
-    .order('data_hora', { ascending: true }).limit(5);
-  return data ?? [];
+async function buscarProximosLembretes(key: string, url: string) {
+  return dbSelect('lembretes',
+    `select=*&enviado=eq.false&data_hora=gte.${encodeURIComponent(new Date().toISOString())}&order=data_hora.asc&limit=5`,
+    key, url);
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers de cálculo ────────────────────────────────────────────────────────
 
 // deno-lint-ignore no-explicit-any
 function calcularResumo(t: Record<string, any>[]) {
@@ -137,23 +161,21 @@ function fmt(v: number) {
 
 // ── WhatsApp ──────────────────────────────────────────────────────────────────
 
-async function sendMessage(to: string, texto: string) {
+async function sendWhatsApp(to: string, texto: string) {
   const TOKEN    = Deno.env.get('WHATSAPP_TOKEN')!;
   const PHONE_ID = Deno.env.get('WHATSAPP_PHONE_NUMBER_ID')!;
   await fetch(`https://graph.facebook.com/v19.0/${PHONE_ID}/messages`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp', to, type: 'text', text: { body: texto },
-    }),
+    body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body: texto } }),
   });
 }
 
 function notificarPedro(texto: string) {
-  return sendMessage(Deno.env.get('MEU_NUMERO')!, texto);
+  return sendWhatsApp(Deno.env.get('MEU_NUMERO')!, texto);
 }
 
-// ── Gemini ────────────────────────────────────────────────────────────────────
+// ── Gemini ─────────────────────────────────────────────────────────────────────
 
 const MODEL      = 'gemini-2.0-flash';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
@@ -240,7 +262,7 @@ const FUNCTION_DECLARATIONS = [
 const GEMINI_TOOLS = [{ functionDeclarations: FUNCTION_DECLARATIONS }];
 
 // deno-lint-ignore no-explicit-any
-async function callGemini(systemPrompt: string, contents: any[], geminiKey: string) {
+async function callGemini(systemPrompt: string, contents: any[], geminiKey: string): Promise<any> {
   const body = {
     systemInstruction: { parts: [{ text: systemPrompt }] },
     contents,
@@ -249,53 +271,71 @@ async function callGemini(systemPrompt: string, contents: any[], geminiKey: stri
     generationConfig: { maxOutputTokens: 1200, temperature: 0.7 },
   };
 
-  const res = await fetch(`${GEMINI_URL}?key=${geminiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  // Retry com backoff exponencial para erros 429
+  const delays = [2000, 4000, 8000];
+  let lastErr = '';
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Gemini API error ${res.status}: ${err}`);
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    const res = await fetch(`${GEMINI_URL}?key=${geminiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (res.status === 429) {
+      if (attempt < delays.length) {
+        await new Promise(r => setTimeout(r, delays[attempt]));
+        continue;
+      }
+      lastErr = 'limite de uso do Gemini atingido — tente novamente em alguns minutos';
+      break;
+    }
+
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`Gemini API error ${res.status}: ${txt}`);
+    }
+
+    const json = await res.json();
+    const candidate = json.candidates?.[0];
+    // deno-lint-ignore no-explicit-any
+    const parts: any[] = candidate?.content?.parts ?? [];
+    // deno-lint-ignore no-explicit-any
+    const functionCalls = parts.filter((p: any) => p.functionCall).map((p: any) => p.functionCall);
+    // deno-lint-ignore no-explicit-any
+    const text = parts.filter((p: any) => p.text).map((p: any) => p.text).join('');
+
+    return {
+      text,
+      functionCalls,
+      modelContent: candidate?.content ?? { role: 'model', parts: [] },
+      finishReason: candidate?.finishReason as string,
+    };
   }
 
-  const json = await res.json();
-  const candidate = json.candidates?.[0];
-  // deno-lint-ignore no-explicit-any
-  const parts: any[] = candidate?.content?.parts ?? [];
-
-  // deno-lint-ignore no-explicit-any
-  const functionCalls = parts.filter((p: any) => p.functionCall).map((p: any) => p.functionCall);
-  // deno-lint-ignore no-explicit-any
-  const text = parts.filter((p: any) => p.text).map((p: any) => p.text).join('');
-
-  return {
-    text,
-    functionCalls,
-    modelContent: candidate?.content ?? { role: 'model', parts: [] },
-    finishReason: candidate?.finishReason as string,
-  };
+  throw new Error(lastErr || 'Gemini indisponível');
 }
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
-async function buildSystemPrompt(): Promise<string> {
+// deno-lint-ignore no-explicit-any
+async function buildSystemPrompt(key: string, url: string): Promise<string> {
   const [transacoesMes, lembretes, contexto] = await Promise.all([
-    buscarTransacoesMes(),
-    buscarProximosLembretes(),
-    buscarTodoContexto(),
+    buscarTransacoesMes(key, url),
+    buscarProximosLembretes(key, url),
+    buscarTodoContexto(key, url),
   ]);
 
   const { receitas, despesas, saldo } = calcularResumo(transacoesMes);
-  const porCat = calcularPorCategoria(transacoesMes.filter(t => t.tipo === 'despesa'));
+  const porCat = calcularPorCategoria(transacoesMes.filter((t: Record<string, unknown>) => t.tipo === 'despesa'));
 
   const topCategorias = Object.entries(porCat)
-    .sort((a, b) => b[1].despesas - a[1].despesas).slice(0, 5)
-    .map(([cat, v]) => `  ${cat}: R$ ${fmt(v.despesas)}`).join('\n');
+    .sort((a, b) => (b[1] as { despesas: number }).despesas - (a[1] as { despesas: number }).despesas)
+    .slice(0, 5)
+    .map(([cat, v]) => `  ${cat}: R$ ${fmt((v as { despesas: number }).despesas)}`).join('\n');
 
   const lembretesStr = lembretes.length
-    ? lembretes.map(l => `  • ${new Date(l.data_hora as string).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}: ${l.descricao}`).join('\n')
+    ? lembretes.map((l: Record<string, unknown>) => `  • ${new Date(l.data_hora as string).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}: ${l.descricao}`).join('\n')
     : '  (nenhum)';
 
   const agora = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
@@ -325,7 +365,7 @@ Despesas fixas ~R$7.504/mês. Déficit atual ~-R$6.900/mês sem receita dos neg�
 Dívidas (~R$87.420): Adijo R$300 (NOME SUJO, prioridade 1), Americanas R$6k, CNPJ esposa R$8k, Mercado Pago R$20k, Infinity Pay R$14k, Condomínio R$4.2k, MRV R$30k, Caixa R$2.7k, Fernando R$6.720 (R$450/mês, quitação ago/2027).
 
 30 vendas/mês Vendedoria = para de afundar. 50 = começa a pagar dívida.
-${contexto.length ? `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nMEMÓRIA ATUALIZADA\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${contexto.map(c => `${c.chave}: ${c.valor}`).join('\n')}` : ''}
+${contexto.length ? `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nMEMÓRIA ATUALIZADA\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${contexto.map((c: Record<string, unknown>) => `${c.chave}: ${c.valor}`).join('\n')}` : ''}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SALDO ${new Date().toLocaleString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase()}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -383,7 +423,7 @@ Data/hora agora: ${agora}`;
 const ultimosIds = new Map<string, string>();
 
 // deno-lint-ignore no-explicit-any
-async function executarTool(nome: string, args: Record<string, any>, remetente: string): Promise<unknown> {
+async function executarTool(nome: string, args: Record<string, any>, remetente: string, key: string, url: string): Promise<unknown> {
   try {
     switch (nome) {
       case 'registrar_transacao': {
@@ -393,17 +433,16 @@ async function executarTool(nome: string, args: Record<string, any>, remetente: 
           empresa: args.empresa ?? null,
           data_transacao: (args.data as string) || new Date().toISOString().slice(0, 10),
           confirmado: true,
-        });
+        }, key, url);
         ultimosIds.set(remetente, t.id);
-        const hoje = await buscarTransacoesHoje();
-        const resumoHoje = calcularResumo(hoje);
-        return { ok: true, id: t.id, registrado: true, resumo_hoje: resumoHoje };
+        const hoje = await buscarTransacoesHoje(key, url);
+        return { ok: true, id: t.id, registrado: true, resumo_hoje: calcularResumo(hoje) };
       }
 
       case 'desfazer_ultima': {
         const id = (args.id as string) || ultimosIds.get(remetente);
         if (!id) return { ok: false, motivo: 'nenhuma transação recente para desfazer' };
-        await cancelarTransacao(id);
+        await cancelarTransacao(id, key, url);
         ultimosIds.delete(remetente);
         return { ok: true, desfeito: true };
       }
@@ -412,7 +451,7 @@ async function executarTool(nome: string, args: Record<string, any>, remetente: 
         const l = await inserirLembrete({
           descricao: args.descricao, data_hora: args.data_hora,
           recorrente: args.recorrente ?? false, frequencia: args.frequencia ?? null,
-        });
+        }, key, url);
         return { ok: true, id: l.id };
       }
 
@@ -420,14 +459,14 @@ async function executarTool(nome: string, args: Record<string, any>, remetente: 
         // deno-lint-ignore no-explicit-any
         let t: Record<string, any>[];
         const p = args.periodo as string;
-        if (p === 'hoje')             t = await buscarTransacoesHoje();
-        else if (p === 'semana')      t = await buscarTransacoesSemana();
-        else if (p === 'ontem')       t = await buscarTransacoesOntem();
+        if (p === 'hoje')             t = await buscarTransacoesHoje(key, url);
+        else if (p === 'semana')      t = await buscarTransacoesSemana(key, url);
+        else if (p === 'ontem')       t = await buscarTransacoesOntem(key, url);
         else if (p === 'mes_passado') {
           const mp = new Date(); mp.setMonth(mp.getMonth() - 1);
-          t = await buscarTransacoesMes(mp.toISOString().slice(0, 7));
+          t = await buscarTransacoesMes(key, url, mp.toISOString().slice(0, 7));
         }
-        else t = await buscarTransacoesMes();
+        else t = await buscarTransacoesMes(key, url);
 
         if (args.tipo_negocio && args.tipo_negocio !== 'todos')
           t = t.filter(x => x.tipo_negocio === args.tipo_negocio);
@@ -454,13 +493,13 @@ async function executarTool(nome: string, args: Record<string, any>, remetente: 
       }
 
       case 'salvar_informacao': {
-        await salvarContexto(args.chave as string, args.valor as string, args.categoria as string);
+        await salvarContexto(args.chave as string, args.valor as string, args.categoria as string, key, url);
         return { ok: true, salvo: args.chave };
       }
 
       case 'listar_lembretes': {
-        const ls = await buscarProximosLembretes();
-        return { lembretes: ls.map(l => ({ descricao: l.descricao, data_hora: l.data_hora })) };
+        const ls = await buscarProximosLembretes(key, url);
+        return { lembretes: ls.map((l: Record<string, unknown>) => ({ descricao: l.descricao, data_hora: l.data_hora })) };
       }
 
       default:
@@ -489,7 +528,7 @@ async function baixarImagemWhatsApp(mediaId: string): Promise<{ mimeType: string
   return { mimeType: mime, data: btoa(binary) };
 }
 
-// ── Enviar resposta (split se longa) ─────────────────────────────────────────
+// ── Enviar resposta longa ─────────────────────────────────────────────────────
 
 async function enviarResposta(texto: string) {
   const MAX = 4000;
@@ -498,7 +537,7 @@ async function enviarResposta(texto: string) {
   for (const parte of partes) await notificarPedro(parte.trim());
 }
 
-// ── Histórico Supabase → formato Gemini ──────────────────────────────────────
+// ── Histórico → formato Gemini ────────────────────────────────────────────────
 
 // deno-lint-ignore no-explicit-any
 function toGeminiContents(historico: any[]): any[] {
@@ -525,14 +564,16 @@ async function processarMensagem(
   tipo: string,
   mediaId: string | null,
 ) {
-  const GEMINI_KEY = Deno.env.get('GEMINI_API_KEY')!;
+  const GEMINI_KEY  = Deno.env.get('GEMINI_API_KEY')!;
+  const SUPA_KEY    = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const SUPA_URL    = Deno.env.get('SUPABASE_URL')!;
 
   try {
-    await salvarMensagem(remetente, 'user', mensagem ?? `[${tipo}]`);
+    await salvarMensagem(remetente, 'user', mensagem ?? `[${tipo}]`, SUPA_KEY, SUPA_URL);
 
     const [systemPrompt, historico] = await Promise.all([
-      buildSystemPrompt(),
-      buscarHistorico(remetente, 18),
+      buildSystemPrompt(SUPA_KEY, SUPA_URL),
+      buscarHistorico(remetente, 18, SUPA_KEY, SUPA_URL),
     ]);
 
     // deno-lint-ignore no-explicit-any
@@ -557,11 +598,10 @@ async function processarMensagem(
     while (resposta.functionCalls.length > 0 && iteracoes < 5) {
       iteracoes++;
       contents.push(resposta.modelContent);
-
       // deno-lint-ignore no-explicit-any
       const functionResponses: any[] = [];
       for (const fc of resposta.functionCalls) {
-        const result = await executarTool(fc.name, fc.args ?? {}, remetente);
+        const result = await executarTool(fc.name, fc.args ?? {}, remetente, SUPA_KEY, SUPA_URL);
         functionResponses.push({ functionResponse: { name: fc.name, response: result } });
       }
       contents.push({ role: 'user', parts: functionResponses });
@@ -570,7 +610,7 @@ async function processarMensagem(
 
     const textoFinal = resposta.text || 'Entendido.';
     await enviarResposta(textoFinal);
-    await salvarMensagem(remetente, 'assistant', textoFinal);
+    await salvarMensagem(remetente, 'assistant', textoFinal, SUPA_KEY, SUPA_URL);
 
   } catch (err) {
     console.error('[Max] Erro crítico:', err);
@@ -606,7 +646,6 @@ Deno.serve(async (req: Request) => {
     const texto   = tipo === 'text'     ? (msg.text?.body as string)      : null;
     const mediaId = tipo === 'image'    ? (msg.image?.id as string)       :
                     tipo === 'document' ? (msg.document?.id as string)    : null;
-
     await processarMensagem(msg.from, texto, tipo, mediaId);
   }
 
