@@ -554,21 +554,19 @@ async function processarMensagem(
     // deno-lint-ignore no-explicit-any
     const messages: any[] = [{ role: 'system', content: systemPrompt }];
 
-    // Adiciona histórico anterior
+    // Adiciona histórico anterior — filtra conteúdo nulo/vazio
     for (const h of historico.slice(0, -1)) {
-      messages.push({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content });
+      const content = typeof h.content === 'string' ? h.content : String(h.content ?? '');
+      if (!content.trim()) continue;
+      messages.push({ role: h.role === 'assistant' ? 'assistant' : 'user', content });
     }
 
-    // Mensagem atual (com imagem se houver)
+    // Mensagem atual — imagens descritas como texto (llama-3.3-70b não suporta visão)
     if (tipo === 'image' && mediaId) {
-      const img = await baixarImagemWhatsApp(mediaId);
-      messages.push({
-        role: 'user',
-        content: [
-          { type: 'image_url', image_url: { url: `data:${img.mimeType};base64,${img.data}` } },
-          { type: 'text', text: mensagem ?? 'Analise esta imagem. Se for comprovante ou transação financeira, extrai os dados e registra automaticamente.' },
-        ],
-      });
+      const imgDesc = mensagem
+        ? `[Imagem enviada] ${mensagem}`
+        : '[Imagem enviada] Analise e registre se for comprovante ou transação financeira.';
+      messages.push({ role: 'user', content: imgDesc });
     } else {
       messages.push({ role: 'user', content: mensagem ?? '' });
     }
