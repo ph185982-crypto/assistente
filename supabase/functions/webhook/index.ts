@@ -177,8 +177,9 @@ function notificarPedro(texto: string) {
 
 // ── Groq / Llama 3.3 70B ─────────────────────────────────────────────────────
 
-const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+const GROQ_URL          = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_MODEL        = 'llama-3.3-70b-versatile';
+const GROQ_VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 
 const TOOLS = [
   {
@@ -278,36 +279,49 @@ const TOOLS = [
 ];
 
 // deno-lint-ignore no-explicit-any
-async function callGroq(messages: any[], groqKey: string) {
-  const res = await fetch(GROQ_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${groqKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      messages,
-      tools: TOOLS,
-      tool_choice: 'auto',
-      max_tokens: 1200,
-      temperature: 0.7,
-    }),
-  });
+async function callGroq(messages: any[], groqKey: string, model: string = GROQ_MODEL) {
+  const delays = [2000, 4000, 8000, 15000];
+  let lastErr = '';
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Groq API error ${res.status}: ${err}`);
+  for (let tentativa = 0; tentativa <= delays.length; tentativa++) {
+    const res = await fetch(GROQ_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${groqKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        tools: TOOLS,
+        tool_choice: 'auto',
+        max_tokens: 1200,
+        temperature: 0.7,
+      }),
+    });
+
+    if (res.ok) {
+      const json = await res.json();
+      const msg = json.choices?.[0]?.message;
+      return {
+        text: msg?.content ?? '',
+        toolCalls: msg?.tool_calls ?? [],
+        message: msg,
+        finishReason: json.choices?.[0]?.finish_reason as string,
+      };
+    }
+
+    lastErr = await res.text();
+
+    if (res.status === 429 && tentativa < delays.length) {
+      await new Promise(r => setTimeout(r, delays[tentativa]));
+      continue;
+    }
+
+    throw new Error(`Groq API error ${res.status}: ${lastErr}`);
   }
 
-  const json = await res.json();
-  const msg = json.choices?.[0]?.message;
-  return {
-    text: msg?.content ?? '',
-    toolCalls: msg?.tool_calls ?? [],
-    message: msg,
-    finishReason: json.choices?.[0]?.finish_reason as string,
-  };
+  throw new Error(`Groq API error: ${lastErr}`);
 }
 
 // ── System prompt ─────────────────────────────────────────────────────────────
@@ -548,7 +562,7 @@ async function processarMensagem(
 
     const [systemPrompt, historico] = await Promise.all([
       buildSystemPrompt(SUPA_KEY, SUPA_URL),
-      buscarHistorico(remetente, 18, SUPA_KEY, SUPA_URL),
+      buscarHistorico(remetente, 10, SUPA_KEY, SUPA_URL),
     ]);
 
     // deno-lint-ignore no-explicit-any
@@ -561,17 +575,23 @@ async function processarMensagem(
       messages.push({ role: h.role === 'assistant' ? 'assistant' : 'user', content });
     }
 
-    // Mensagem atual — imagens descritas como texto (llama-3.3-70b não suporta visão)
+    // Mensagem atual — imagens enviadas com visão real (Llama 4 Scout)
+    let modeloUsado = GROQ_MODEL;
     if (tipo === 'image' && mediaId) {
-      const imgDesc = mensagem
-        ? `[Imagem enviada] ${mensagem}`
-        : '[Imagem enviada] Analise e registre se for comprovante ou transação financeira.';
-      messages.push({ role: 'user', content: imgDesc });
+      modeloUsado = GROQ_VISION_MODEL;
+      const { mimeType, data } = await baixarImagemWhatsApp(mediaId);
+      messages.push({
+        role: 'user',
+        content: [
+          { type: 'text', text: mensagem || 'Analise esta imagem. Se for comprovante/recibo/print de transação financeira, extraia valor, descrição e registre usando a ferramenta registrar_transacao.' },
+          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${data}` } },
+        ],
+      });
     } else {
       messages.push({ role: 'user', content: mensagem ?? '' });
     }
 
-    let resposta = await callGroq(messages, GROQ_KEY);
+    let resposta = await callGroq(messages, GROQ_KEY, modeloUsado);
     let iteracoes = 0;
 
     // Loop de tool calls
@@ -595,7 +615,7 @@ async function processarMensagem(
         });
       }
 
-      resposta = await callGroq(messages, GROQ_KEY);
+      resposta = await callGroq(messages, GROQ_KEY, modeloUsado);
     }
 
     const textoFinal = resposta.text || 'Entendido.';
