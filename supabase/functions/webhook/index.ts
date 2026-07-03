@@ -1318,7 +1318,10 @@ Deno.serve(async (req: Request) => {
     console.log(`[Max] msg ignorada: from=${msg.from} esperado=${MEU_NUMERO}`);
   } else if (msg && numerosIguais(msg.from, MEU_NUMERO)) {
     const tipo    = msg.type as string;
-    const texto   = tipo === 'text'     ? (msg.text?.body as string)      : null;
+    const texto   = tipo === 'text'     ? (msg.text?.body as string)
+                  : tipo === 'image'    ? ((msg.image?.caption as string) ?? null)
+                  : tipo === 'document' ? ((msg.document?.caption as string) ?? null)
+                  : null;
     const mediaId = tipo === 'image'    ? (msg.image?.id as string)       :
                     tipo === 'audio'    ? (msg.audio?.id as string)       :
                     tipo === 'document' ? (msg.document?.id as string)    : null;
