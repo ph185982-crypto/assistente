@@ -38,12 +38,14 @@ Deno.serve(async () => {
     const d60 = new Date(); d60.setDate(d60.getDate() - 60);
     const inicio = d60.toISOString().slice(0, 10);
 
-    const [tx, dividas, metas, previstas, tarefas] = await Promise.all([
+    const [tx, dividas, metas, previstas, tarefas, contasPagar, orcamentos] = await Promise.all([
       dbSelect('transacoes', `select=tipo,valor,descricao,categoria,tipo_negocio,data_transacao&confirmado=eq.true&data_transacao=gte.${inicio}&order=data_transacao`, SUPA_KEY, SUPA_URL),
       dbSelect('dividas', 'select=descricao,credor,valor_total,valor_pago,parcela_mensal,dia_vencimento&status=eq.ativa', SUPA_KEY, SUPA_URL).catch(() => []),
       dbSelect('metas_financeiras', 'select=*&status=eq.ativa', SUPA_KEY, SUPA_URL).catch(() => []),
       dbSelect('receitas_previstas', 'select=descricao,valor,data_prevista,status&status=in.(pendente,atrasada)&order=data_prevista', SUPA_KEY, SUPA_URL).catch(() => []),
       dbSelect('tarefas', 'select=descricao,status,historico&order=criado_em.desc&limit=15', SUPA_KEY, SUPA_URL).catch(() => []),
+      dbSelect('contas_pagar', 'select=descricao,valor,data_vencimento,recorrente&status=eq.pendente&order=data_vencimento&limit=20', SUPA_KEY, SUPA_URL).catch(() => []),
+      dbSelect('orcamentos', 'select=categoria,limite_mensal', SUPA_KEY, SUPA_URL).catch(() => []),
     ]);
 
     const res = await fetch(OPENAI_CHAT, {
@@ -60,7 +62,7 @@ Deno.serve(async () => {
           },
           {
             role: 'user',
-            content: `Hoje é ${hoje}. Analise os últimos 60 dias com profundidade: tendência semana a semana (gastos e receitas), categorias que estão crescendo ou fora de controle, desempenho por negócio (pessoal vs vendedoria vs lukaizen), progresso real das dívidas, ritmo vs a meta de R$8k/mês, receitas previstas que não estão caindo. Feche com: 1 coisa pra CORTAR, 1 coisa pra DOBRAR, e o número da semana (a métrica que mais importa agora). Seja específico com valores reais.\n\nDADOS:\nTRANSACOES_60D: ${JSON.stringify(tx)}\nDIVIDAS: ${JSON.stringify(dividas)}\nMETAS: ${JSON.stringify(metas)}\nRECEITAS_PREVISTAS: ${JSON.stringify(previstas)}\nTAREFAS: ${JSON.stringify(tarefas)}`,
+            content: `Hoje é ${hoje}. Analise os últimos 60 dias com profundidade: tendência semana a semana (gastos e receitas), categorias que estão crescendo ou fora de controle, desempenho por negócio (pessoal vs vendedoria vs lukaizen), progresso real das dívidas, ritmo vs a meta de R$8k/mês, receitas previstas que não estão caindo. Feche com: 1 coisa pra CORTAR, 1 coisa pra DOBRAR, e o número da semana (a métrica que mais importa agora). Seja específico com valores reais.\n\nDADOS:\nTRANSACOES_60D: ${JSON.stringify(tx)}\nDIVIDAS: ${JSON.stringify(dividas)}\nMETAS: ${JSON.stringify(metas)}\nRECEITAS_PREVISTAS: ${JSON.stringify(previstas)}\nCONTAS_A_PAGAR: ${JSON.stringify(contasPagar)}\nORCAMENTOS: ${JSON.stringify(orcamentos)}\nTAREFAS: ${JSON.stringify(tarefas)}`,
           },
         ],
       }),

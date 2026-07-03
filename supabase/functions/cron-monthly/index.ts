@@ -1,91 +1,79 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import {
-  buscarTransacoesMesPassado, buscarTransacoesMes,
-  calcularResumo, calcularPorCategoria, fmt,
-  buscarReceitasPrevistasMes, buscarMetasAtivas, atualizarMetaFinanceira,
-} from '../_shared/supabase.ts';
-import { notificarPedro } from '../_shared/whatsapp.ts';
+// Max — fechamento mensal inteligente (dia 1, 8h Brasília). Zero-import: REST + OpenAI.
 
-serve(async () => {
+const OPENAI_CHAT = 'https://api.openai.com/v1/chat/completions';
+const MODEL_DEEP  = 'gpt-5';
+
+function supaHeaders(key: string) {
+  return { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
+}
+
+async function dbSelect(table: string, params: string, key: string, url: string) {
+  const res = await fetch(`${url}/rest/v1/${table}?${params}`, { headers: supaHeaders(key) });
+  if (!res.ok) throw new Error(`DB select ${table}: ${await res.text()}`);
+  return res.json();
+}
+
+async function sendWhatsApp(texto: string) {
+  const TOKEN    = Deno.env.get('WHATSAPP_TOKEN')!;
+  const PHONE_ID = Deno.env.get('WHATSAPP_PHONE_NUMBER_ID')!;
+  const MEU_NUM  = Deno.env.get('MEU_NUMERO')!;
+  const MAX = 4000;
+  const partes = texto.length <= MAX ? [texto] : (texto.match(/[\s\S]{1,4000}(?:\n|$)/g) ?? [texto.slice(0, MAX)]);
+  for (const parte of partes) {
+    await fetch(`https://graph.facebook.com/v19.0/${PHONE_ID}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messaging_product: 'whatsapp', to: MEU_NUM, type: 'text', text: { body: parte.trim() } }),
+    });
+  }
+}
+
+Deno.serve(async () => {
+  const SUPA_KEY   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const SUPA_URL   = Deno.env.get('SUPABASE_URL')!;
+  const OPENAI_KEY = Deno.env.get('OPENAI_API_KEY')!;
+
   try {
+    // Mês fechado = mês anterior; comparativo = mês retrasado
     const agora = new Date();
-    const mesPassado = new Date(agora.getFullYear(), agora.getMonth() - 1, 1);
-    const mesPassadoStr = mesPassado.toISOString().slice(0, 7);
+    const mesFechadoD = new Date(agora.getFullYear(), agora.getMonth() - 1, 1);
+    const mesAnteriorD = new Date(agora.getFullYear(), agora.getMonth() - 2, 1);
+    const mesFechado  = mesFechadoD.toISOString().slice(0, 7);
+    const mesAnterior = mesAnteriorD.toISOString().slice(0, 7);
 
-    const [tMesPassado, tMesAtual, previstasMesPassado, metas] = await Promise.all([
-      buscarTransacoesMesPassado(),
-      buscarTransacoesMes(),
-      buscarReceitasPrevistasMes(mesPassadoStr),
-      buscarMetasAtivas(),
+    const [txFechado, txAnterior, dividas, metas, contasPendentes] = await Promise.all([
+      dbSelect('transacoes', `select=tipo,valor,descricao,categoria,tipo_negocio,data_transacao&confirmado=eq.true&mes=eq.${mesFechado}`, SUPA_KEY, SUPA_URL),
+      dbSelect('transacoes', `select=tipo,valor,categoria,tipo_negocio&confirmado=eq.true&mes=eq.${mesAnterior}`, SUPA_KEY, SUPA_URL),
+      dbSelect('dividas', 'select=descricao,credor,valor_total,valor_pago,parcela_mensal&status=eq.ativa', SUPA_KEY, SUPA_URL).catch(() => []),
+      dbSelect('metas_financeiras', 'select=*&status=eq.ativa', SUPA_KEY, SUPA_URL).catch(() => []),
+      dbSelect('contas_pagar', 'select=descricao,valor,data_vencimento&status=eq.pendente&order=data_vencimento&limit=20', SUPA_KEY, SUPA_URL).catch(() => []),
     ]);
 
-    const resumo    = calcularResumo(tMesPassado);
-    const resumoAnt = calcularResumo(tMesAtual);
-    const porCat    = calcularPorCategoria(tMesPassado.filter((x: Record<string, unknown>) => x.tipo === 'despesa'));
-    const porNeg    = tMesPassado.reduce((acc: Record<string, { receitas: number; despesas: number }>, x: Record<string, unknown>) => {
-      const n = (x.tipo_negocio as string) ?? 'pessoal';
-      if (!acc[n]) acc[n] = { receitas: 0, despesas: 0 };
-      if (x.tipo === 'receita') acc[n].receitas += Number(x.valor);
-      else acc[n].despesas += Number(x.valor);
-      return acc;
-    }, {});
+    const res = await fetch(OPENAI_CHAT, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${OPENAI_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: MODEL_DEEP,
+        reasoning_effort: 'high',
+        max_completion_tokens: 4000,
+        messages: [
+          {
+            role: 'system',
+            content: 'Você é Max, conselheiro financeiro e de negócios do Pedro Henrique — empreendedor em Goiânia (Vendedoria: SaaS de vendas WhatsApp; LuKaizen Games), dívidas ~R$87k, renda fixa R$4.550/mês, despesas fixas ~R$7.504/mês, meta R$8-20k/mês. Todo dia 1 você entrega o FECHAMENTO DO MÊS no WhatsApp. Tom de amigo experiente que fala a real, sem markdown com asteriscos, sem frases genéricas. Máximo ~2500 caracteres.',
+          },
+          {
+            role: 'user',
+            content: `Feche o mês ${mesFechado} comparando com ${mesAnterior}: receitas x despesas x mês anterior, categorias que subiram/desceram (com valores), quanto foi pra dívida, desempenho por negócio (pessoal/vendedoria/lukaizen), quanto faltou pra meta de R$8k. Dê uma NOTA de 0 a 10 pro mês (justifique em 1 frase) e feche com as 3 prioridades do mês que começa.\n\nDADOS:\nMES_FECHADO_${mesFechado}: ${JSON.stringify(txFechado)}\nMES_ANTERIOR_${mesAnterior}: ${JSON.stringify(txAnterior)}\nDIVIDAS: ${JSON.stringify(dividas)}\nMETAS: ${JSON.stringify(metas)}\nCONTAS_A_PAGAR_PENDENTES: ${JSON.stringify(contasPendentes)}`,
+          },
+        ],
+      }),
+    });
+    if (!res.ok) throw new Error(`OpenAI: ${(await res.text()).slice(0, 200)}`);
+    const json = await res.json();
+    const fechamento = json.choices?.[0]?.message?.content ?? '';
 
-    const nomeMes = mesPassado.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
-
-    let msg = `Fechamento de ${nomeMes}:\n\n`;
-    msg += `Receitas: R$ ${fmt(resumo.receitas)}\n`;
-    msg += `Despesas: R$ ${fmt(resumo.despesas)}\n`;
-    msg += `Saldo: R$ ${fmt(resumo.saldo)}\n`;
-
-    const pctMeta = ((resumo.receitas / 8000) * 100).toFixed(1);
-    msg += `\nMeta R$8.000: ${pctMeta}% atingida`;
-    if (resumo.receitas < 8000) {
-      msg += ` (faltou R$ ${fmt(8000 - resumo.receitas)})`;
-    } else {
-      msg += ` — meta batida!`;
-    }
-    msg += `\n`;
-
-    if (Object.keys(porNeg).length > 0) {
-      msg += `\nPor negocio:\n`;
-      for (const [neg, v] of Object.entries(porNeg)) {
-        msg += `• ${neg}: entrada R$ ${fmt(v.receitas)} | saida R$ ${fmt(v.despesas)}\n`;
-      }
-    }
-
-    const top5 = Object.entries(porCat).sort((a, b) => b[1].despesas - a[1].despesas).slice(0, 5);
-    if (top5.length > 0) {
-      msg += `\nMaiores gastos:\n`;
-      top5.forEach(([c, v]) => { msg += `• ${c}: R$ ${fmt(v.despesas)}\n`; });
-    }
-
-    const deltaReceitas = resumo.receitas - resumoAnt.receitas;
-    const deltaDespesas = resumo.despesas - resumoAnt.despesas;
-    msg += `\nVs mes atual (parcial):\n`;
-    msg += `Receitas: ${deltaReceitas >= 0 ? '+' : ''}R$ ${fmt(deltaReceitas)}\n`;
-    msg += `Despesas: ${deltaDespesas >= 0 ? '+' : ''}R$ ${fmt(deltaDespesas)}\n`;
-
-    const previstasPendentes = previstasMesPassado.filter((r: Record<string, unknown>) =>
-      r.status === 'pendente' || r.status === 'atrasada'
-    );
-    if (previstasPendentes.length > 0) {
-      const totalPend = previstasPendentes.reduce((s: number, r: Record<string, unknown>) => s + Number(r.valor), 0);
-      msg += `\nAtencao — ${previstasPendentes.length} receita(s) prevista(s) de ${nomeMes} sem confirmacao:\n`;
-      msg += `Total: R$ ${fmt(totalPend)}\n`;
-      for (const r of previstasPendentes as Record<string, unknown>[]) {
-        msg += `• ${r.descricao} — R$ ${fmt(Number(r.valor))}\n`;
-      }
-    }
-
-    // Atualizar metas com receita do mes passado
-    for (const meta of metas as Record<string, unknown>[]) {
-      if (meta.tipo === 'mensal') {
-        await atualizarMetaFinanceira(meta.id as string, resumo.receitas);
-      }
-    }
-
-    await notificarPedro(msg.trim());
-    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    await sendWhatsApp(fechamento.trim() || 'Fechamento mensal indisponível.');
+    return new Response(JSON.stringify({ ok: true, mes: mesFechado }), { status: 200 });
   } catch (err) {
     console.error('[cron-monthly]', err);
     return new Response(JSON.stringify({ error: String(err) }), { status: 500 });

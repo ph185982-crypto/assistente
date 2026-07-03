@@ -499,6 +499,121 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'buscar_transacoes',
+      description: 'Busca transações com filtros livres e retorna com IDs. Use para achar transações específicas ("quanto gastei com X?"), e SEMPRE antes de editar/excluir para obter o ID correto.',
+      parameters: {
+        type: 'object',
+        properties: {
+          data_inicio:  { type: 'string', description: 'YYYY-MM-DD' },
+          data_fim:     { type: 'string', description: 'YYYY-MM-DD' },
+          texto:        { type: 'string', description: 'Busca por texto na descrição ou empresa' },
+          categoria:    { type: 'string' },
+          tipo:         { type: 'string', enum: ['receita','despesa'] },
+          tipo_negocio: { type: 'string', enum: ['pessoal','vendedoria','lukaizen','geral'] },
+          limite:       { type: 'number', description: 'Máximo de resultados (default 30)' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'editar_transacao',
+      description: 'Edita qualquer campo de uma transação existente: valor, descrição/título, categoria, competência (data), tipo de negócio. Obtenha o ID com buscar_transacoes primeiro. Se houver mais de um candidato, confirme com Pedro antes.',
+      parameters: {
+        type: 'object',
+        properties: {
+          id:             { type: 'string' },
+          valor:          { type: 'number' },
+          descricao:      { type: 'string' },
+          categoria:      { type: 'string' },
+          tipo:           { type: 'string', enum: ['receita','despesa'] },
+          tipo_negocio:   { type: 'string', enum: ['pessoal','vendedoria','lukaizen','geral'] },
+          data_transacao: { type: 'string', description: 'YYYY-MM-DD — mudar isso muda a competência (mês) automaticamente' },
+          empresa:        { type: 'string' },
+        },
+        required: ['id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'excluir_transacao',
+      description: 'Exclui uma transação específica por ID (qualquer uma, não só a última). Confirme com Pedro se houver ambiguidade.',
+      parameters: {
+        type: 'object',
+        properties: { id: { type: 'string' } },
+        required: ['id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'gerar_extrato',
+      description: 'Gera extrato completo formatado (linha a linha, com totais). Use quando Pedro pedir extrato, histórico ou lista das transações. Repasse o texto do extrato COMPLETO e sem resumir.',
+      parameters: {
+        type: 'object',
+        properties: {
+          data_inicio:  { type: 'string', description: 'YYYY-MM-DD' },
+          data_fim:     { type: 'string', description: 'YYYY-MM-DD' },
+          tipo_negocio: { type: 'string', enum: ['pessoal','vendedoria','lukaizen','geral'] },
+          categoria:    { type: 'string' },
+        },
+        required: ['data_inicio','data_fim'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'gerenciar_conta_pagar',
+      description: 'Contas a pagar e provisões (despesas futuras conhecidas): criar provisão, listar pendentes, marcar como paga (registra a transação automaticamente), cancelar. O Max avisa no vencimento.',
+      parameters: {
+        type: 'object',
+        properties: {
+          acao:            { type: 'string', enum: ['criar','listar','pagar','cancelar'] },
+          id:              { type: 'string' },
+          descricao:       { type: 'string' },
+          valor:           { type: 'number' },
+          data_vencimento: { type: 'string', description: 'YYYY-MM-DD' },
+          categoria:       { type: 'string' },
+          tipo_negocio:    { type: 'string', enum: ['pessoal','vendedoria','lukaizen','geral'] },
+          recorrente:      { type: 'boolean' },
+          frequencia:      { type: 'string', enum: ['semanal','mensal','anual'] },
+        },
+        required: ['acao'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'gerenciar_orcamento',
+      description: 'Orçamento (teto de gasto mensal) por categoria: definir, listar (mostra gasto atual vs limite), remover. O Max alerta sozinho em 80% e 100%.',
+      parameters: {
+        type: 'object',
+        properties: {
+          acao:          { type: 'string', enum: ['definir','listar','remover'] },
+          categoria:     { type: 'string' },
+          limite_mensal: { type: 'number' },
+        },
+        required: ['acao'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'projecao_caixa',
+      description: 'Projeção de fluxo de caixa dos próximos 30 dias: combina saldo do mês, contas a pagar, receitas previstas e burn rate. Use quando Pedro perguntar "como fecha o mês?", "vai faltar dinheiro?", planejamento de caixa.',
+      parameters: { type: 'object', properties: { dias: { type: 'number', description: 'Horizonte em dias (default 30)' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'gerenciar_tarefa',
       description: 'Tarefas/mandatos com cobrança: Pedro pede "toda sexta me lembra de cobrar X" ou "acompanha Y". O Max cobra o resultado na data e registra a resposta.',
       parameters: {
@@ -601,11 +716,16 @@ ${tarefasStr}
 COMO VOCÊ SE COMPORTA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-VOCÊ É UM ASSISTENTE COMPLETO, não só financeiro:
+VOCÊ É UM ASSISTENTE COMPLETO com controle TOTAL das finanças:
 - Pesquisa na web (buscar_na_web) quando ele pedir notícia, informação, cotação, qualquer coisa atual
 - Pensa profundamente (analise_profunda) quando ele pedir conselho ou decisão importante
 - Acompanha mandatos (gerenciar_tarefa): se ele pedir "me cobra X toda sexta", cria tarefa
 - Gerencia dívidas e receitas previstas pelas ferramentas próprias
+- EXTRATOS/HISTÓRICOS: gerar_extrato devolve o extrato pronto — repasse COMPLETO, sem resumir
+- EDIÇÃO: pode alterar QUALQUER transação (valor, título, categoria, competência/data). Fluxo: buscar_transacoes para achar o ID → se houver mais de um candidato, pergunta qual → editar_transacao/excluir_transacao
+- PROVISÕES/CONTAS A PAGAR: "provisiona o aluguel dia 5" → gerenciar_conta_pagar criar. Você avisa no vencimento. Quando Pedro disser que pagou, usa a ação pagar (registra a transação sozinha)
+- ORÇAMENTOS: teto por categoria com gerenciar_orcamento — você alerta sozinho em 80% e 100%
+- CAIXA: "como fecha o mês?" → projecao_caixa e interpreta o resultado (destaque o primeiro dia no vermelho, se houver)
 - VAI ALÉM: quando registrar uma transação ou responder algo, se notar um padrão relevante (gasto subindo, categoria estourando, oportunidade), comenta em 1 frase. Insight curto, não sermão.
 
 TOM E ESTILO:
@@ -812,6 +932,200 @@ async function executarTool(nome: string, args: Record<string, any>, remetente: 
         return { erro: 'ação desconhecida' };
       }
 
+      case 'buscar_transacoes': {
+        const partes: string[] = ['select=id,tipo,valor,descricao,categoria,tipo_negocio,empresa,data_transacao', 'confirmado=eq.true'];
+        if (args.data_inicio) partes.push(`data_transacao=gte.${args.data_inicio}`);
+        if (args.data_fim)    partes.push(`data_transacao=lte.${args.data_fim}`);
+        if (args.categoria)   partes.push(`categoria=eq.${encodeURIComponent(args.categoria)}`);
+        if (args.tipo)        partes.push(`tipo=eq.${args.tipo}`);
+        if (args.tipo_negocio) partes.push(`tipo_negocio=eq.${args.tipo_negocio}`);
+        if (args.texto) {
+          const t = encodeURIComponent(`*${args.texto}*`);
+          partes.push(`or=(descricao.ilike.${t},empresa.ilike.${t})`);
+        }
+        partes.push('order=data_transacao.desc');
+        partes.push(`limit=${Math.min(Number(args.limite ?? 30), 100)}`);
+        const ts = await dbSelect('transacoes', partes.join('&'), key, url);
+        return { total: ts.length, soma: ts.reduce((s: number, x: Record<string, unknown>) => s + Number(x.valor), 0), transacoes: ts };
+      }
+
+      case 'editar_transacao': {
+        // deno-lint-ignore no-explicit-any
+        const patch: Record<string, any> = {};
+        for (const campo of ['valor','descricao','categoria','tipo','tipo_negocio','empresa'] as const) {
+          if (args[campo] !== undefined && args[campo] !== null) patch[campo] = args[campo];
+        }
+        if (args.data_transacao) {
+          patch.data_transacao = args.data_transacao;
+          patch.mes = String(args.data_transacao).slice(0, 7);
+        }
+        if (Object.keys(patch).length === 0) return { ok: false, motivo: 'nenhum campo para alterar' };
+        const upd = await dbUpdate('transacoes', `id=eq.${args.id}`, patch, key, url);
+        if (!Array.isArray(upd) || upd.length === 0) return { ok: false, motivo: 'transação não encontrada' };
+        return { ok: true, transacao_atualizada: upd[0] };
+      }
+
+      case 'excluir_transacao': {
+        const [existe] = await dbSelect('transacoes', `select=id,descricao,valor&id=eq.${args.id}`, key, url);
+        if (!existe) return { ok: false, motivo: 'transação não encontrada' };
+        await cancelarTransacao(args.id as string, key, url);
+        return { ok: true, excluida: existe };
+      }
+
+      case 'gerar_extrato': {
+        const partes: string[] = ['select=*', 'confirmado=eq.true',
+          `data_transacao=gte.${args.data_inicio}`, `data_transacao=lte.${args.data_fim}`,
+          'order=data_transacao.asc', 'limit=400'];
+        if (args.tipo_negocio) partes.push(`tipo_negocio=eq.${args.tipo_negocio}`);
+        if (args.categoria)    partes.push(`categoria=eq.${encodeURIComponent(args.categoria)}`);
+        const ts = await dbSelect('transacoes', partes.join('&'), key, url);
+        if (ts.length === 0) return { extrato: `Extrato ${args.data_inicio} a ${args.data_fim}: nenhuma transação no período.` };
+
+        let corpo = `📄 EXTRATO ${args.data_inicio} a ${args.data_fim}${args.tipo_negocio ? ` (${args.tipo_negocio})` : ''}${args.categoria ? ` — ${args.categoria}` : ''}\n\n`;
+        let dataAtual = '';
+        for (const x of ts) {
+          if (x.data_transacao !== dataAtual) {
+            dataAtual = x.data_transacao;
+            const [, m, d] = dataAtual.split('-');
+            corpo += `— ${d}/${m} —\n`;
+          }
+          const sinal = x.tipo === 'receita' ? '+' : '-';
+          corpo += `${sinal} R$ ${fmt(Number(x.valor))}  ${x.descricao} (${x.categoria})\n`;
+        }
+        const resumo = calcularResumo(ts);
+        const porCat = calcularPorCategoria(ts.filter((x: Record<string, unknown>) => x.tipo === 'despesa'));
+        corpo += `\nTOTAIS:\nEntrou: R$ ${fmt(resumo.receitas)} | Saiu: R$ ${fmt(resumo.despesas)} | Saldo: R$ ${fmt(resumo.saldo)}\n`;
+        const cats = Object.entries(porCat).sort((a, b) => (b[1] as { despesas: number }).despesas - (a[1] as { despesas: number }).despesas);
+        if (cats.length > 1) {
+          corpo += `\nPor categoria:\n`;
+          for (const [c, v] of cats) corpo += `  ${c}: R$ ${fmt((v as { despesas: number }).despesas)}\n`;
+        }
+        return { extrato: corpo.trim(), instrucao: 'Envie o extrato COMPLETO para Pedro, sem resumir nem cortar linhas.' };
+      }
+
+      case 'gerenciar_conta_pagar': {
+        const acao = args.acao as string;
+        if (acao === 'criar') {
+          const c = await dbInsert('contas_pagar', {
+            descricao: args.descricao, valor: args.valor, data_vencimento: args.data_vencimento,
+            categoria: args.categoria ?? 'Outros', tipo_negocio: args.tipo_negocio ?? 'pessoal',
+            recorrente: args.recorrente ?? false, frequencia: args.frequencia ?? null, status: 'pendente',
+          }, key, url);
+          return { ok: true, id: c.id, provisao_criada: true };
+        }
+        if (acao === 'listar') {
+          const cs = await dbSelect('contas_pagar', 'select=*&status=eq.pendente&order=data_vencimento&limit=30', key, url);
+          return { contas_pendentes: cs, total: cs.reduce((s: number, x: Record<string, unknown>) => s + Number(x.valor), 0) };
+        }
+        if (acao === 'pagar') {
+          const [c] = await dbSelect('contas_pagar', `select=*&id=eq.${args.id}`, key, url);
+          if (!c) return { ok: false, motivo: 'conta não encontrada' };
+          const valorPago = Number(args.valor ?? c.valor);
+          const tx = await inserirTransacao({
+            tipo: 'despesa', valor: valorPago, descricao: c.descricao,
+            categoria: c.categoria ?? 'Outros', tipo_negocio: c.tipo_negocio ?? 'pessoal',
+            data_transacao: new Date().toISOString().slice(0, 10), confirmado: true,
+          }, key, url);
+          await dbUpdate('contas_pagar', `id=eq.${args.id}`, { status: 'paga', transacao_id: tx.id }, key, url);
+          if (c.recorrente && c.frequencia) {
+            const d = new Date(c.data_vencimento + 'T12:00:00Z');
+            if (c.frequencia === 'semanal') d.setDate(d.getDate() + 7);
+            else if (c.frequencia === 'anual') d.setFullYear(d.getFullYear() + 1);
+            else d.setMonth(d.getMonth() + 1);
+            await dbInsert('contas_pagar', {
+              descricao: c.descricao, valor: c.valor, data_vencimento: d.toISOString().slice(0, 10),
+              categoria: c.categoria, tipo_negocio: c.tipo_negocio,
+              recorrente: true, frequencia: c.frequencia, status: 'pendente',
+            }, key, url);
+          }
+          return { ok: true, paga: true, transacao_id: tx.id, proxima_criada: !!(c.recorrente && c.frequencia) };
+        }
+        if (acao === 'cancelar') {
+          await dbUpdate('contas_pagar', `id=eq.${args.id}`, { status: 'cancelada' }, key, url);
+          return { ok: true, cancelada: true };
+        }
+        return { erro: 'ação desconhecida' };
+      }
+
+      case 'gerenciar_orcamento': {
+        const acao = args.acao as string;
+        if (acao === 'definir') {
+          await dbUpsert('orcamentos', { categoria: args.categoria, limite_mensal: args.limite_mensal }, key, url);
+          return { ok: true, categoria: args.categoria, limite: args.limite_mensal };
+        }
+        if (acao === 'listar') {
+          const [orcs, txMes] = await Promise.all([
+            dbSelect('orcamentos', 'select=*&order=categoria', key, url),
+            buscarTransacoesMes(key, url),
+          ]);
+          const gastoPorCat = calcularPorCategoria(txMes.filter((x: Record<string, unknown>) => x.tipo === 'despesa'));
+          return {
+            orcamentos: orcs.map((o: Record<string, unknown>) => ({
+              categoria: o.categoria, limite: Number(o.limite_mensal),
+              gasto_no_mes: (gastoPorCat[o.categoria as string]?.despesas ?? 0),
+              percentual: Math.round(((gastoPorCat[o.categoria as string]?.despesas ?? 0) / Number(o.limite_mensal)) * 100),
+            })),
+          };
+        }
+        if (acao === 'remover') {
+          await dbDelete('orcamentos', `categoria=eq.${encodeURIComponent(args.categoria)}`, key, url);
+          return { ok: true, removido: args.categoria };
+        }
+        return { erro: 'ação desconhecida' };
+      }
+
+      case 'projecao_caixa': {
+        const dias = Math.min(Number(args.dias ?? 30), 60);
+        const hoje = new Date().toISOString().slice(0, 10);
+        const fimD = new Date(); fimD.setDate(fimD.getDate() + dias);
+        const fim = fimD.toISOString().slice(0, 10);
+        const [txMes, contas, previstas, tx60] = await Promise.all([
+          buscarTransacoesMes(key, url),
+          dbSelect('contas_pagar', `select=descricao,valor,data_vencimento&status=eq.pendente&data_vencimento=lte.${fim}&order=data_vencimento`, key, url).catch(() => []),
+          dbSelect('receitas_previstas', `select=descricao,valor,data_prevista&status=in.(pendente,atrasada)&data_prevista=lte.${fim}&order=data_prevista`, key, url).catch(() => []),
+          buscarTransacoesUltimosDias(60, key, url),
+        ]);
+        const saldoMes = calcularResumo(txMes).saldo;
+        const despesas60 = tx60.filter((x: Record<string, unknown>) => x.tipo === 'despesa')
+          .reduce((s: number, x: Record<string, unknown>) => s + Number(x.valor), 0);
+        const burnDiario = despesas60 / 60;
+
+        // Linha do tempo: eventos conhecidos + burn diário estimado
+        // deno-lint-ignore no-explicit-any
+        const eventos: any[] = [];
+        const amanhaD = new Date(); amanhaD.setDate(amanhaD.getDate() + 1);
+        const amanha = amanhaD.toISOString().slice(0, 10);
+        // Vencidos/atrasados entram como "amanhã" para aparecerem na linha do tempo
+        for (const c of contas) eventos.push({ data: c.data_vencimento <= hoje ? amanha : c.data_vencimento, tipo: 'conta_a_pagar', descricao: c.descricao, valor: -Number(c.valor) });
+        for (const r of previstas) eventos.push({ data: r.data_prevista <= hoje ? amanha : r.data_prevista, tipo: 'receita_prevista', descricao: r.descricao, valor: Number(r.valor) });
+        eventos.sort((a, b) => a.data.localeCompare(b.data));
+
+        let acumulado = saldoMes;
+        let primeiroDiaNegativo: string | null = acumulado < 0 ? hoje : null;
+        const linha: Record<string, unknown>[] = [];
+        const cursor = new Date();
+        for (let i = 1; i <= dias; i++) {
+          cursor.setDate(cursor.getDate() + 1);
+          const dstr = cursor.toISOString().slice(0, 10);
+          acumulado -= burnDiario;
+          for (const e of eventos.filter(e => e.data === dstr)) {
+            acumulado += e.valor;
+            linha.push({ data: dstr, evento: e.descricao, valor: e.valor, acumulado: Math.round(acumulado) });
+          }
+          if (acumulado < 0 && !primeiroDiaNegativo) primeiroDiaNegativo = dstr;
+        }
+        return {
+          nota: 'Projeção relativa ao saldo do mês corrente (não é saldo bancário). Burn diário = média de TODAS as despesas dos últimos 60 dias, então contas provisionadas podem estar parcialmente contadas em dobro — trate como estimativa conservadora.',
+          saldo_mes_atual: Math.round(saldoMes),
+          burn_diario_estimado: Math.round(burnDiario),
+          eventos_conhecidos: linha,
+          saldo_projetado_fim: Math.round(acumulado),
+          primeiro_dia_no_vermelho: primeiroDiaNegativo,
+          contas_a_pagar_total: contas.reduce((s: number, x: Record<string, unknown>) => s + Number(x.valor), 0),
+          receitas_previstas_total: previstas.reduce((s: number, x: Record<string, unknown>) => s + Number(x.valor), 0),
+        };
+      }
+
       case 'gerenciar_tarefa': {
         const acao = args.acao as string;
         if (acao === 'criar') {
@@ -944,6 +1258,7 @@ async function processarMensagem(
         try { args = JSON.parse(tc.function.arguments ?? '{}'); } catch { /* ignore */ }
 
         const result = await executarTool(tc.function.name, args, remetente, SUPA_KEY, SUPA_URL, OPENAI_KEY);
+        console.log(`[Max] tool=${tc.function.name} args=${JSON.stringify(args).slice(0, 300)} result=${JSON.stringify(result).slice(0, 300)}`);
         messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(result) });
       }
 

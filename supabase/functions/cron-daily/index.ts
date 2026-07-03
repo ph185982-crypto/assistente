@@ -100,7 +100,8 @@ Deno.serve(async (req: Request) => {
     const ontem = ontemD.toISOString().slice(0, 10);
     const mesIni = hoje.slice(0, 7) + '-01';
 
-    const [txOntem, txHoje, txMes, previstas, dividas, lembretes, tarefas] = await Promise.all([
+    const em7d = new Date(); em7d.setDate(em7d.getDate() + 7);
+    const [txOntem, txHoje, txMes, previstas, dividas, lembretes, tarefas, contasPagar] = await Promise.all([
       dbSelect('transacoes', `select=*&confirmado=eq.true&data_transacao=eq.${ontem}`, SUPA_KEY, SUPA_URL),
       dbSelect('transacoes', `select=*&confirmado=eq.true&data_transacao=eq.${hoje}`, SUPA_KEY, SUPA_URL),
       dbSelect('transacoes', `select=*&confirmado=eq.true&data_transacao=gte.${mesIni}&data_transacao=lte.${hoje}`, SUPA_KEY, SUPA_URL),
@@ -108,6 +109,7 @@ Deno.serve(async (req: Request) => {
       dbSelect('dividas', 'select=descricao,credor,valor_total,valor_pago,parcela_mensal,dia_vencimento&status=eq.ativa', SUPA_KEY, SUPA_URL).catch(() => []),
       dbSelect('lembretes', `select=descricao,data_hora&enviado=eq.false&order=data_hora&limit=8`, SUPA_KEY, SUPA_URL).catch(() => []),
       dbSelect('tarefas', 'select=descricao,proxima_cobranca,recorrente&status=eq.ativa&order=proxima_cobranca&limit=8', SUPA_KEY, SUPA_URL).catch(() => []),
+      dbSelect('contas_pagar', `select=descricao,valor,data_vencimento,recorrente&status=eq.pendente&data_vencimento=lte.${em7d.toISOString().slice(0, 10)}&order=data_vencimento`, SUPA_KEY, SUPA_URL).catch(() => []),
     ]);
 
     const agora = new Date();
@@ -122,6 +124,7 @@ Deno.serve(async (req: Request) => {
       hoje: modo === 'noite' ? { ...calcularResumo(txHoje), transacoes: txHoje.map((x: Record<string, unknown>) => ({ tipo: x.tipo, valor: x.valor, descricao: x.descricao, categoria: x.categoria })) } : undefined,
       mes: { ...resumoMes, burn_rate_dia: Math.round(burnRate), projecao_despesas: Math.round(burnRate * diasNoMes), dias_restantes: diasNoMes - diaAtual },
       receitas_previstas: previstas,
+      contas_a_pagar_7_dias: contasPagar,
       dividas_ativas: dividas,
       lembretes_proximos: lembretes,
       tarefas_ativas: tarefas,

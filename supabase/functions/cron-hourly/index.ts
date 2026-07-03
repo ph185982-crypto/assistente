@@ -66,6 +66,24 @@ Deno.serve(async () => {
       }
     }
 
+    // 1b) Contas a pagar vencendo hoje / em 2 dias
+    const d2 = new Date(); d2.setDate(d2.getDate() + 2);
+    const contas = await dbSelect('contas_pagar',
+      `select=id,descricao,valor,data_vencimento&status=eq.pendente&data_vencimento=lte.${d2.toISOString().slice(0, 10)}`,
+      SUPA_KEY, SUPA_URL).catch(() => []);
+    for (const c of contas) {
+      if (c.data_vencimento <= hoje) {
+        if (await alertaNovo(`conta_pagar:${c.id}:${c.data_vencimento}`, SUPA_KEY, SUPA_URL)) {
+          const quando = c.data_vencimento === hoje ? 'HOJE' : `desde ${c.data_vencimento} (ATRASADA)`;
+          alertas.push(`📌 Vence ${quando}: ${c.descricao} — R$ ${fmt(Number(c.valor))}. Pagou? Me avisa que eu registro.`);
+        }
+      } else {
+        if (await alertaNovo(`conta_pagar_aviso:${c.id}`, SUPA_KEY, SUPA_URL)) {
+          alertas.push(`🗓️ ${c.descricao} — R$ ${fmt(Number(c.valor))} vence em ${c.data_vencimento}.`);
+        }
+      }
+    }
+
     // 2) Receitas previstas atrasadas (não caíram)
     const atrasadas = await dbSelect('receitas_previstas', `select=id,descricao,valor,data_prevista,cliente&status=in.(pendente,atrasada)&data_prevista=lt.${hoje}`, SUPA_KEY, SUPA_URL).catch(() => []);
     for (const r of atrasadas) {
@@ -109,6 +127,31 @@ Deno.serve(async () => {
       if (atual > 1.5 * media) {
         if (await alertaNovo(`categoria_estouro:${cat}:${mes}`, SUPA_KEY, SUPA_URL)) {
           alertas.push(`📈 ${cat} está em R$ ${fmt(atual)} este mês — bem acima da sua média de R$ ${fmt(media)}. Vale segurar.`);
+        }
+      }
+    }
+
+    // 5) Orçamentos: 80% e 100% do limite mensal por categoria
+    const orcamentos = await dbSelect('orcamentos', 'select=categoria,limite_mensal', SUPA_KEY, SUPA_URL).catch(() => []);
+    if (orcamentos.length > 0) {
+      const txMesAtual = await dbSelect('transacoes',
+        `select=valor,categoria&confirmado=eq.true&tipo=eq.despesa&data_transacao=gte.${mes}-01&data_transacao=lte.${hoje}`,
+        SUPA_KEY, SUPA_URL).catch(() => []);
+      const gastoCat: Record<string, number> = {};
+      for (const x of txMesAtual) gastoCat[x.categoria] = (gastoCat[x.categoria] ?? 0) + Number(x.valor);
+      for (const o of orcamentos) {
+        const gasto = gastoCat[o.categoria] ?? 0;
+        const limite = Number(o.limite_mensal);
+        if (limite <= 0) continue;
+        const pct = gasto / limite;
+        if (pct >= 1) {
+          if (await alertaNovo(`orcamento100:${o.categoria}:${mes}`, SUPA_KEY, SUPA_URL)) {
+            alertas.push(`🚨 Orçamento de ${o.categoria} ESTOUROU: R$ ${fmt(gasto)} de R$ ${fmt(limite)} (${Math.round(pct * 100)}%).`);
+          }
+        } else if (pct >= 0.8) {
+          if (await alertaNovo(`orcamento80:${o.categoria}:${mes}`, SUPA_KEY, SUPA_URL)) {
+            alertas.push(`⚠️ ${o.categoria} já está em ${Math.round(pct * 100)}% do orçamento: R$ ${fmt(gasto)} de R$ ${fmt(limite)}.`);
+          }
         }
       }
     }
