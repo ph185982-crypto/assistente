@@ -189,11 +189,16 @@ function fmt(v: number) {
 async function sendWhatsApp(to: string, texto: string) {
   const TOKEN    = Deno.env.get('WHATSAPP_TOKEN')!;
   const PHONE_ID = Deno.env.get('WHATSAPP_PHONE_NUMBER_ID')!;
-  await fetch(`https://graph.facebook.com/v19.0/${PHONE_ID}/messages`, {
+  const res = await fetch(`https://graph.facebook.com/v19.0/${PHONE_ID}/messages`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body: texto } }),
   });
+  if (!res.ok) {
+    const err = await res.text();
+    console.error(`[Max] WhatsApp FAILED ${res.status}: ${err.slice(0, 300)}`);
+    throw new Error(`WhatsApp ${res.status}: ${err.slice(0, 150)}`);
+  }
 }
 
 function notificarPedro(texto: string) {
@@ -1309,7 +1314,9 @@ Deno.serve(async (req: Request) => {
   const body = await req.json().catch(() => ({}));
   const msg  = body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
-  if (msg && numerosIguais(msg.from, MEU_NUMERO)) {
+  if (msg && !numerosIguais(msg.from, MEU_NUMERO)) {
+    console.log(`[Max] msg ignorada: from=${msg.from} esperado=${MEU_NUMERO}`);
+  } else if (msg && numerosIguais(msg.from, MEU_NUMERO)) {
     const tipo    = msg.type as string;
     const texto   = tipo === 'text'     ? (msg.text?.body as string)      : null;
     const mediaId = tipo === 'image'    ? (msg.image?.id as string)       :
