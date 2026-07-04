@@ -214,18 +214,26 @@ async function enviarResposta(texto: string) {
 
 async function baixarMidiaWhatsApp(mediaId: string): Promise<{ mimeType: string; bytes: Uint8Array; base64: string }> {
   const WA_TOKEN = Deno.env.get('WHATSAPP_TOKEN')!;
-  const metaRes = await fetch(`https://graph.facebook.com/v19.0/${mediaId}`,
-    { headers: { Authorization: `Bearer ${WA_TOKEN}` } });
-  const { url: mediaUrl, mime_type: mimeMeta } = await metaRes.json();
-  const bin = await fetch(mediaUrl, { headers: { Authorization: `Bearer ${WA_TOKEN}` } });
-  const buf  = await bin.arrayBuffer();
-  const mime = bin.headers.get('content-type') ?? mimeMeta ?? 'application/octet-stream';
-  const bytes = new Uint8Array(buf);
-  let binary = '';
-  const chunk = 8192;
-  for (let i = 0; i < bytes.length; i += chunk)
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  return { mimeType: mime.split(';')[0], bytes, base64: btoa(binary) };
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 25_000);
+  try {
+    const metaRes = await fetch(`https://graph.facebook.com/v19.0/${mediaId}`,
+      { headers: { Authorization: `Bearer ${WA_TOKEN}` }, signal: ctrl.signal });
+    if (!metaRes.ok) throw new Error(`Meta media metadata ${metaRes.status}`);
+    const { url: mediaUrl, mime_type: mimeMeta } = await metaRes.json();
+    const bin = await fetch(mediaUrl, { headers: { Authorization: `Bearer ${WA_TOKEN}` }, signal: ctrl.signal });
+    if (!bin.ok) throw new Error(`Meta media download ${bin.status}`);
+    const buf  = await bin.arrayBuffer();
+    const mime = bin.headers.get('content-type') ?? mimeMeta ?? 'application/octet-stream';
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    const chunk = 8192;
+    for (let i = 0; i < bytes.length; i += chunk)
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+    return { mimeType: mime.split(';')[0], bytes, base64: btoa(binary) };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // Envia resposta em áudio (voz) — usado quando o Pedro manda áudio
@@ -1197,6 +1205,10 @@ async function processarMensagem(
   const SUPA_URL   = Deno.env.get('SUPABASE_URL')!;
 
   try {
+    // Salvar mensagem NO INÍCIO — antes de qualquer download de mídia
+    // Garante registro em DB mesmo se transcrição/download falhar depois
+    await salvarMensagem(remetente, 'user', mensagem ?? `[${tipo}]`, SUPA_KEY, SUPA_URL);
+
     // Áudio → transcreve com Whisper e trata como texto
     let respondeEmAudio = false;
     if (tipo === 'audio' && mediaId) {
@@ -1206,8 +1218,6 @@ async function processarMensagem(
       tipo = 'text';
       mediaId = null;
     }
-
-    await salvarMensagem(remetente, 'user', mensagem ?? `[${tipo}]`, SUPA_KEY, SUPA_URL);
 
     const [systemPrompt, historico] = await Promise.all([
       buildSystemPrompt(SUPA_KEY, SUPA_URL),
@@ -1225,14 +1235,23 @@ async function processarMensagem(
 
     // Mensagem atual — imagem e PDF vão com o conteúdo real (GPT-5 tem visão nativa)
     if (tipo === 'image' && mediaId) {
-      const { mimeType, base64 } = await baixarMidiaWhatsApp(mediaId);
-      messages.push({
-        role: 'user',
-        content: [
-          { type: 'text', text: mensagem || 'Analise esta imagem. Se for comprovante/recibo/print de transação financeira, extraia os valores REAIS e registre com registrar_transacao.' },
-          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
-        ],
-      });
+      let imagemOk = false;
+      try {
+        const { mimeType, base64 } = await baixarMidiaWhatsApp(mediaId);
+        messages.push({
+          role: 'user',
+          content: [
+            { type: 'text', text: mensagem || 'Analise esta imagem. Se for comprovante/recibo/print de transação financeira, extraia os valores REAIS e registre com registrar_transacao.' },
+            { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
+          ],
+        });
+        imagemOk = true;
+      } catch (imgErr) {
+        console.error('[Max] Falha ao baixar imagem:', imgErr);
+        await enviarResposta('📎 Recebi seu comprovante mas não consegui abrir a imagem. Pode reenviar ou me dizer manualmente: qual valor, para quem foi e quando?');
+        return;
+      }
+      if (!imagemOk) return;
     } else if (tipo === 'document' && mediaId) {
       const { mimeType, base64 } = await baixarMidiaWhatsApp(mediaId);
       if (mimeType === 'application/pdf') {
@@ -1314,9 +1333,33 @@ Deno.serve(async (req: Request) => {
   const body = await req.json().catch(() => ({}));
   const msg  = body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
+  // Log imediato de todo webhook recebido — diagnóstico permanente
+  if (msg) {
+    const SUPA_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const SUPA_URL = Deno.env.get('SUPABASE_URL')!;
+    console.log(`[Max] webhook: from=${msg.from} type=${msg.type} id=${msg.id}`);
+    dbInsert('webhook_events', {
+      from_number: msg.from,
+      msg_type: msg.type,
+      msg_id: msg.id,
+      payload: body?.entry?.[0]?.changes?.[0]?.value,
+    }, SUPA_KEY, SUPA_URL).catch((e: unknown) => console.error('[Max] webhook_events log fail:', e));
+  }
+
   if (msg && !numerosIguais(msg.from, MEU_NUMERO)) {
     console.log(`[Max] msg ignorada: from=${msg.from} esperado=${MEU_NUMERO}`);
   } else if (msg && numerosIguais(msg.from, MEU_NUMERO)) {
+    // Deduplicação — Meta pode reenviar o mesmo webhook
+    const msgId = msg.id as string;
+    const SUPA_KEY2 = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const SUPA_URL2 = Deno.env.get('SUPABASE_URL')!;
+    const jaVisto = await dbSelect('webhook_events', `msg_id=eq.${encodeURIComponent(msgId)}&select=id&limit=2`, SUPA_KEY2, SUPA_URL2)
+      .catch(() => [] as unknown[]);
+    if (Array.isArray(jaVisto) && jaVisto.length > 1) {
+      console.log(`[Max] duplicata ignorada: msg_id=${msgId}`);
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
+
     const tipo    = msg.type as string;
     const texto   = tipo === 'text'     ? (msg.text?.body as string)
                   : tipo === 'image'    ? ((msg.image?.caption as string) ?? null)
@@ -1325,7 +1368,11 @@ Deno.serve(async (req: Request) => {
     const mediaId = tipo === 'image'    ? (msg.image?.id as string)       :
                     tipo === 'audio'    ? (msg.audio?.id as string)       :
                     tipo === 'document' ? (msg.document?.id as string)    : null;
-    await processarMensagem(msg.from, texto, tipo, mediaId);
+    try {
+      await processarMensagem(msg.from, texto, tipo, mediaId);
+    } catch (err) {
+      console.error('[Max] Handler externo erro:', err);
+    }
   }
 
   return new Response(JSON.stringify({ ok: true }), {
