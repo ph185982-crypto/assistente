@@ -215,7 +215,7 @@ export default function ClienteDetalheClient({ id }: { id: string }) {
       {showEdit && (
         <ClienteFormModal
           clienteId={id}
-          initial={cliente}
+          initial={cliente ? { ...cliente, whatsapp: cliente.whatsapp ?? '', observacoes: cliente.observacoes ?? '' } : undefined}
           onClose={() => setShowEdit(false)}
           onSaved={() => { setShowEdit(false); fetchCliente() }}
         />
