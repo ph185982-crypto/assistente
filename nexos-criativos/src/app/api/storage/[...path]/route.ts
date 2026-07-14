@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createReadStream, existsSync, statSync } from 'fs'
+import { existsSync, readFileSync, statSync } from 'fs'
 import path from 'path'
-import { Readable } from 'stream'
-import { ReadableStream } from 'stream/web'
 
 const STORAGE = process.env.STORAGE_PATH || path.join(process.cwd(), 'storage')
 
@@ -26,10 +24,8 @@ export async function GET(
   const contentType =
     ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg'
 
-  const nodeStream = createReadStream(filePath)
-  const webStream = Readable.toWeb(nodeStream) as ReadableStream
-
-  return new NextResponse(webStream, {
+  const buffer = readFileSync(filePath)
+  return new NextResponse(buffer, {
     headers: {
       'Content-Type': contentType,
       'Content-Length': stat.size.toString(),
