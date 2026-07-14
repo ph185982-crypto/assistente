@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { writeFile, mkdir } from 'fs/promises'
-import path from 'path'
+import { put } from '@vercel/blob'
 import { v4 as uuidv4 } from 'uuid'
-
-const STORAGE = process.env.STORAGE_PATH || path.join(process.cwd(), 'storage')
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData()
@@ -18,22 +15,23 @@ export async function POST(req: NextRequest) {
   }
 
   const ext = file.name.split('.').pop() || 'jpg'
-  const filename = `${uuidv4()}.${ext}`
-  const uploadDir = path.join(STORAGE, 'uploads', clienteId)
-  await mkdir(uploadDir, { recursive: true })
+  const filename = `uploads/${clienteId}/${uuidv4()}.${ext}`
 
-  const bytes = await file.arrayBuffer()
-  const filepath = path.join(uploadDir, filename)
-  await writeFile(filepath, Buffer.from(bytes))
+  const blob = await put(filename, file, { access: 'public' })
 
   const ativo = await prisma.ativoVisual.create({
     data: {
       clienteId,
       tipo,
-      path: filepath,
+      path: blob.url,
       descricao: descricao || null,
     },
   })
+
+  // Se for logo, atualizar o campo logoPath do cliente
+  if (tipo === 'logo') {
+    await prisma.cliente.update({ where: { id: clienteId }, data: { logoPath: blob.url } })
+  }
 
   return NextResponse.json(ativo, { status: 201 })
 }

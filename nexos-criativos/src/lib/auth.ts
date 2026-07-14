@@ -13,7 +13,9 @@ export async function requireAuth() {
 }
 
 export function checkPassword(password: string): boolean {
-  return password === process.env.TEAM_PASSWORD
+  const teamPassword = process.env.TEAM_PASSWORD
+  if (!teamPassword) return true // Sem senha configurada = acesso livre
+  return password === teamPassword
 }
 
 export function getAuthCookieOptions() {

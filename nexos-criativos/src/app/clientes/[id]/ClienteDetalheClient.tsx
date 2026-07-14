@@ -29,11 +29,11 @@ interface Cliente {
 }
 
 function pathToUrl(p: string): string {
+  if (!p) return ''
+  if (p.startsWith('http')) return p
   const parts = p.replace(/\\/g, '/').split('/')
   const storageIdx = parts.lastIndexOf('storage')
-  if (storageIdx !== -1) {
-    return '/api/storage/' + parts.slice(storageIdx + 1).join('/')
-  }
+  if (storageIdx !== -1) return '/api/storage/' + parts.slice(storageIdx + 1).join('/')
   return p
 }
 

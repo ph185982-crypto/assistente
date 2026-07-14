@@ -3,7 +3,6 @@ import { gerarConceitos } from './agents/estrategista'
 import { gerarCopy } from './agents/copy'
 import { editarImagem } from './gemini'
 import { gerarFormatos } from './composicao'
-import path from 'path'
 
 export async function executarPipeline(jobId: string) {
   try {
@@ -25,7 +24,7 @@ export async function executarPipeline(jobId: string) {
     }
 
     const descricaoAtivos = ativos
-      .map((a) => `- ${a.tipo}: ${a.descricao || 'sem descrição'} (${path.basename(a.path)})`)
+      .map((a) => `- ${a.tipo}: ${a.descricao || 'sem descrição'}`)
       .join('\n')
 
     const cliente = job.cliente
