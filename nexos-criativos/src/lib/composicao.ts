@@ -128,7 +128,7 @@ async function compor(
   const imageBuffer = await fetchBuffer(imagemSource)
   const overlaySvg = buildOverlaySvg(width, height, headline, cta, corPrimaria, corSecundaria, posicaoTexto, zonaSegurao)
 
-  const composites: sharp.OverlayOptions[] = [{ input: overlaySvg, top: 0, left: 0 }]
+  const composites: { input: Buffer | string; top: number; left: number }[] = [{ input: overlaySvg, top: 0, left: 0 }]
 
   if (logoPath) {
     try {
