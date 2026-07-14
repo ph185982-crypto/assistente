@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Cliente {
+  id            String        @id @default(cuid())
+  nome          String
+  nicho         String
+  publicoAlvo   String
+  tomDeVoz      String
+  corPrimaria   String
+  corSecundaria String
+  fonteTitulo   String        @default("DM Sans")
+  ctaPadrao     String
+  whatsapp      String?
+  logoPath      String?
+  diferenciais  String
+  observacoes   String?
+  ativos        AtivoVisual[]
+  jobs          JobCriativo[]
+  criadoEm      DateTime      @default(now())
+}
+
+model AtivoVisual {
+  id        String   @id @default(cuid())
+  clienteId String
+  cliente   Cliente  @relation(fields: [clienteId], references: [id])
+  tipo      String
+  path      String
+  descricao String?
+  criadoEm  DateTime @default(now())
+}
+
+model JobCriativo {
+  id           String      @id @default(cuid())
+  clienteId    String
+  cliente      Cliente     @relation(fields: [clienteId], references: [id])
+  objetivo     String
+  briefing     String?
+  ativosUsados String[]
+  status       String      @default("processando")
+  erroMsg      String?
+  conceitos    Conceito[]
+  criadoEm     DateTime    @default(now())
+}
+
+model Conceito {
+  id        String      @id @default(cuid())
+  jobId     String
+  job       JobCriativo @relation(fields: [jobId], references: [id])
+  titulo    String
+  angulo    String
+  headline  String
+  legenda   String
+  cta       String?
+  promptImg String
+  variacoes Variacao[]
+}
+
+model Variacao {
+  id         String   @id @default(cuid())
+  conceitoId String
+  conceito   Conceito @relation(fields: [conceitoId], references: [id])
+  pathBase   String
+  path1x1    String?
+  path4x5    String?
+  path9x16   String?
+  aprovada   Boolean  @default(false)
+  feedback   String?
+  criadoEm   DateTime @default(now())
+}
