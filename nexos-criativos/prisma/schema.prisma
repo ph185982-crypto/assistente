@@ -75,3 +75,32 @@ model Variacao {
   feedback   String?
   criadoEm   DateTime @default(now())
 }
+
+model Projeto {
+  id            String     @id @default(cuid())
+  nome          String
+  nicho         String     @default("")
+  publicoAlvo   String     @default("")
+  tomDeVoz      String     @default("")
+  corPrimaria   String     @default("#000000")
+  corSecundaria String     @default("#ffffff")
+  ctaPadrao     String     @default("")
+  whatsapp      String?
+  diferenciais  String     @default("")
+  logoPath      String?
+  mensagens     Mensagem[]
+  criadoEm      DateTime   @default(now())
+  atualizadoEm  DateTime   @updatedAt
+}
+
+model Mensagem {
+  id        String   @id @default(cuid())
+  projetoId String
+  projeto   Projeto  @relation(fields: [projetoId], references: [id], onDelete: Cascade)
+  role      String
+  content   String
+  anexos    String[]
+  resultados String[]
+  status    String   @default("enviada")
+  criadoEm  DateTime @default(now())
+}

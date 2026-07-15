@@ -19,9 +19,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" className={`${dmSans.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col font-sans bg-gray-50 text-gray-900">
-        {children}
-      </body>
+      <body className="h-full font-sans">{children}</body>
     </html>
   );
 }

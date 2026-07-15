@@ -2,9 +2,28 @@
 
 @theme inline {
   --font-sans: var(--font-dm-sans);
+  --color-brand: #d4a574;
+  --color-brand-dark: #b8895c;
+  --color-surface: #f7f7f8;
+  --color-surface-dark: #2f2f2f;
+  --color-sidebar: #1a1a1a;
+  --color-sidebar-hover: #2a2a2a;
+  --color-sidebar-active: #333333;
+  --color-chat-bg: #ffffff;
+  --color-msg-user: #f0f0f0;
+  --color-msg-assistant: #ffffff;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
 }
 
 body {
-  background: #f9fafb;
-  color: #111827;
+  background: var(--color-chat-bg);
+  color: #1a1a1a;
 }
+
+.markdown-content p { margin-bottom: 0.5rem; }
+.markdown-content strong { font-weight: 600; }
+.markdown-content hr { margin: 0.75rem 0; border-color: #e5e7eb; }
