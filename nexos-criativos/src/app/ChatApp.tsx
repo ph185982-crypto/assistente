@@ -140,16 +140,40 @@ export default function ChatApp() {
     formData.append('content', input.trim() || 'Criar anúncios com essas imagens')
     files.forEach((f) => formData.append('files', f))
 
+    const currentInput = input
     setInput('')
     setFiles([])
     previews.forEach((p) => URL.revokeObjectURL(p))
     setPreviews([])
 
     try {
-      await fetch('/api/chat', { method: 'POST', body: formData })
+      const res = await fetch('/api/chat', { method: 'POST', body: formData })
+      const data = await res.json()
       await fetchMensagens(projetoAtivo)
-      startPolling(projetoAtivo)
       fetchProjetos()
+
+      if (data.conceitos && data.conceitos.length > 0 && data.anexos?.length > 0) {
+        for (let i = 0; i < data.conceitos.length; i++) {
+          try {
+            await fetch('/api/chat/gerar', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                projetoId: projetoAtivo,
+                mensagemId: data.assistantMsg.id,
+                fotoUrl: data.anexos[0],
+                conceito: data.conceitos[i],
+                conceitoIndex: i,
+                totalConceitos: data.conceitos.length,
+              }),
+            })
+            await fetchMensagens(projetoAtivo)
+          } catch (err) {
+            console.error(`Erro no conceito ${i}:`, err)
+          }
+        }
+        await fetchMensagens(projetoAtivo)
+      }
     } catch (err) {
       console.error('Erro ao enviar:', err)
     } finally {
