@@ -1,8 +1,5 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import { put } from '@vercel/blob'
 import { v4 as uuidv4 } from 'uuid'
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 
 async function fetchImageData(imagemPath: string): Promise<{ buffer: Buffer; mimeType: string }> {
   if (imagemPath.startsWith('http')) {
@@ -23,51 +20,35 @@ export async function editarImagem(
   cena: string,
   subdir: string
 ): Promise<string> {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-preview-image-generation' })
+  const prompt = `Edit this photo for a professional advertising campaign. Keep the product/person EXACTLY as in the original image — same shape, colors, textures, proportions, face and details. Do not redraw, stylize or replace it. Only change the environment and composition: ${cena}. Photorealistic result, natural Brazilian daylight, professional advertising photography, no text, no watermarks, no logos in the scene.`
 
-  const prompt = `Edit this photo. Keep the product/person EXACTLY as in the original image — same shape, colors, textures, proportions, face and details. Do not redraw, stylize or replace it. Only change the environment and composition: ${cena}. Photorealistic result, natural Brazilian daylight, professional advertising photography, no text, no watermarks, no logos in the scene.`
+  const { buffer, mimeType } = await fetchImageData(imagemPath)
 
-  const { buffer: imageData, mimeType } = await fetchImageData(imagemPath)
-  const base64Image = imageData.toString('base64')
+  const form = new FormData()
+  form.append('model', 'gpt-image-1')
+  form.append('size', '1024x1024')
+  form.append('quality', 'high')
+  form.append('prompt', prompt)
+  const ext = mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg'
+  form.append('image', new Blob([new Uint8Array(buffer)], { type: mimeType }), `foto.${ext}`)
 
-  const result = await model.generateContent({
-    contents: [
-      {
-        role: 'user',
-        parts: [
-          { text: prompt },
-          { inlineData: { mimeType, data: base64Image } },
-        ],
-      },
-    ],
-    generationConfig: {
-      // @ts-expect-error - responseModalities not in types yet
-      responseModalities: ['image'],
-    },
+  const res = await fetch('https://api.openai.com/v1/images/edits', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    body: form,
   })
 
-  const candidates = result.response.candidates
-  if (!candidates || candidates.length === 0) throw new Error('Gemini não retornou candidatos')
-
-  const parts = candidates[0].content?.parts
-  if (!parts) throw new Error('Gemini não retornou partes')
-
-  let imageBytes: string | null = null
-  let responseMimeType = 'image/jpeg'
-  for (const part of parts) {
-    if (part.inlineData) {
-      imageBytes = part.inlineData.data
-      responseMimeType = part.inlineData.mimeType || 'image/jpeg'
-      break
-    }
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(data?.error?.message || `OpenAI images/edits falhou (${res.status})`)
   }
 
-  if (!imageBytes) throw new Error('Gemini não retornou imagem nos dados inline')
+  const b64 = data?.data?.[0]?.b64_json
+  if (!b64) throw new Error('OpenAI não retornou imagem')
 
-  const outputExt = responseMimeType.includes('png') ? 'png' : 'jpg'
-  const blob = await put(`${subdir}/${uuidv4()}.${outputExt}`, Buffer.from(imageBytes, 'base64'), {
+  const blob = await put(`${subdir}/${uuidv4()}.png`, Buffer.from(b64, 'base64'), {
     access: 'public',
-    contentType: responseMimeType,
+    contentType: 'image/png',
   })
 
   return blob.url

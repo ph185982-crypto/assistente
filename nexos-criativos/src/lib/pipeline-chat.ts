@@ -47,6 +47,7 @@ export async function executarPipelineChat(
       objetivo: 'venda_direta',
       briefing,
       descricaoAtivos,
+      fotos: anexos,
     })
 
     const fotoRef = anexos[0]
@@ -95,13 +96,17 @@ export async function executarPipelineChat(
         partes.push(
           `**${conceito.titulo}**\n` +
           `${conceito.angulo}\n\n` +
-          `**Headline:** ${conceito.headline}\n` +
-          `**Legenda:** ${copy.legenda}\n` +
+          `**Headline (na foto):** ${conceito.headline}\n` +
+          (conceito.tituloMarketplace ? `**Título p/ marketplace:** ${conceito.tituloMarketplace}\n` : '') +
+          (conceito.descricao ? `**Descrição de venda:**\n${conceito.descricao}\n` : '') +
+          (conceito.keywords?.length ? `**Palavras-chave:** ${conceito.keywords.join(', ')}\n` : '') +
+          `**Legenda (social):** ${copy.legenda}\n` +
           (copy.cta ? `**CTA:** ${copy.cta}` : '')
         )
       } catch (err) {
         console.error(`Erro no conceito ${conceito.titulo}:`, err)
-        partes.push(`**${conceito.titulo}** — erro ao gerar imagem`)
+        const motivo = err instanceof Error ? err.message : String(err)
+        partes.push(`**${conceito.titulo}** — erro ao gerar imagem (${motivo})`)
       }
     }
 
