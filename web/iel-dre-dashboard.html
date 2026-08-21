@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IEL Goiás · Comercial 2026</title>
+<style>
+:root{--text-primary:#1a1918;--text-secondary:#4a4845;--text-muted:#898781;--text-accent:#1d4ed8;--surface-1:#f5f4f0;--surface-2:#ffffff;--border:#e1e0d9;--bg-accent:#eff6ff;--border-accent:#bfdbfe;--radius:6px}
+@media(prefers-color-scheme:dark){:root{--text-primary:#f0efe9;--text-secondary:#b5b3ad;--text-muted:#6b6965;--text-accent:#93c5fd;--surface-1:#1e1d1b;--surface-2:#252421;--border:#2c2c2a;--bg-accent:#1e3a5f;--border-accent:#1d4ed8}}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--surface-1);color:var(--text-primary);min-height:100vh;padding:1rem}
+*{box-sizing:border-box;margin:0;padding:0}
+.root{padding:1rem 0;max-width:900px;margin:0 auto}
+.top-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:.75rem}
+.top-bar h1{font-size:16px;font-weight:500;color:var(--text-primary)}
+.top-bar h1 span{font-size:13px;font-weight:400;color:var(--text-secondary);margin-left:.5rem}
+.month-tabs{display:flex;gap:4px;flex-wrap:wrap}
+.tab{padding:5px 12px;font-size:12px;border-radius:var(--radius);border:0.5px solid var(--border);background:transparent;color:var(--text-secondary);cursor:pointer;transition:.15s}
+.tab:hover{background:var(--surface-1)}
+.tab.active{background:var(--bg-accent);color:var(--text-accent);border-color:var(--border-accent)}
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:1.25rem}
+.kpi{background:var(--surface-1);border-radius:var(--radius);padding:.875rem 1rem}
+.kpi-label{font-size:11px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+.kpi-val{font-size:22px;font-weight:500;color:var(--text-primary);line-height:1.1}
+.kpi-delta{font-size:11px;margin-top:3px}
+.kpi-delta.up{color:#1baf7a}
+.kpi-delta.dn{color:#eb6834}
+.kpi-delta.neutral{color:var(--text-muted)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.card{background:var(--surface-2);border:0.5px solid var(--border);border-radius:12px;padding:1rem 1.25rem}
+.card-title{font-size:11px;font-weight:500;color:var(--text-secondary);margin-bottom:.875rem;text-transform:uppercase;letter-spacing:.05em;display:flex;align-items:center;gap:6px}
+.dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.dot.lr{background:#2a78d6}.dot.inove{background:#1baf7a}.dot.cons{background:#eb6834}
+.chart-wrap{position:relative;width:100%}
+.ps{display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;border-bottom:0.5px solid var(--border)}
+.ps:last-child{border-bottom:none}
+.ps .psl{font-size:13px;color:var(--text-secondary)}
+.ps .psv{font-size:13px;font-weight:500;color:var(--text-primary)}
+.cons-table{width:100%}
+.cons-table td{padding:5px 4px;font-size:12px;vertical-align:middle}
+.cons-table td:first-child{color:var(--text-secondary)}
+.cons-table td:not(:first-child){text-align:right;color:var(--text-primary);font-weight:500}
+.cons-table tr{border-bottom:0.5px solid var(--border)}
+.cons-table tr:last-child{border-bottom:none}
+.legend{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary)}
+.legend-sq{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+.bullet-list{list-style:none;padding:0}
+.bullet-list li{font-size:12px;color:var(--text-secondary);padding:3px 0;display:flex;gap:6px;line-height:1.5}
+.bullet-list li::before{content:"·";color:var(--text-muted);flex-shrink:0}
+.empty{color:var(--text-muted);font-size:12px;font-style:italic}
+.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:var(--radius);font-size:11px;font-weight:500;background:var(--bg-accent);color:var(--text-accent)}
+.funnel-bar{display:flex;gap:0;align-items:stretch;border-radius:6px;overflow:hidden;height:28px;margin-bottom:8px}
+.funnel-labels{display:flex;flex-wrap:wrap;gap:8px}
+.funnel-labels span{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-secondary)}
+.funnel-labels b{color:var(--text-primary)}
+@media(max-width:500px){.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="root" role="main">
+  <div class="top-bar">
+    <h1>IEL Goiás · Comercial <span>Jan–Jul/2026</span></h1>
+    <div class="month-tabs" id="tabs"></div>
+  </div>
+  <div id="main"></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
+const COLORS={lr:'#2a78d6',inove:'#1baf7a',cons:'#eb6834',grid:isDark?'#2c2c2a':'#e1e0d9',muted:'#898781'};
+const DATA={
+  months:['Jan','Fev','Mar','Abr','Mai','Jun','Jul'],
+  lr:[0,12970,50523,291335,335878,188497,25974],
+  inove:[201600,67200,202780,122360,115940,199330,38640],
+  cons:[0,0,0,0,60000,0,0],
+  lr_c:[0,3,13,31,57,40,13],
+  inove_c:[10,4,12,7,7,8,3],
+  cons_c:[0,0,0,0,1,0,0],
+  cons_per:{
+    'Pedro Martins':{lr:[0,0,78223,92365,156008,108840,25220],inove:[44800,0,25760,0,12880,0,0],cons:[0,0,0,0,0,0,0]},
+    'Victor Ramos':{lr:[0,12970,0,188464,79957,79657,754],inove:[156800,67200,177020,122360,102500,199330,38640],cons:[0,0,0,0,60000,0,0]},
+    'Rebeka Iris':{lr:[0,0,0,0,99958,0,0],inove:[0,0,0,0,12880,0,0],cons:[0,0,0,0,0,0,0]},
+  },
+  details:{
+    Jan:{leads:null,funnel:null,notas:['Período de ajuste — sem SDRs, Victor e Pedro operando diretamente','10 pagamentos Inove de inscrições de nov/dez 2025','LR ainda não lançada'],next:[],cons_notas:['LR não havia sido lançada','Consultoria sem ação formal no período'],lider_leads:null,lider_lr:null},
+    Fev:{leads:null,funnel:null,notas:['Estreia LR: 205 propostas, 3 contratos ganhos','61 reuniões Inove, 4 contratos, ciclo médio 45 dias','SDRs reativados: Eloiza, Aylanna, Allexandre'],next:[],cons_notas:[],lider_leads:null,lider_lr:null},
+    Mar:{leads:null,funnel:null,notas:['LR acelera: Josidith R$135k, Fiu Fiu R$11,2k','Inove recorde: 12 contratos, +201,8% vs fev, ciclo 20 dias','Reunião Caiapo valida Consultoria Pocket IEL'],next:[],cons_notas:[],lider_leads:null,lider_lr:null},
+    Abr:{leads:null,funnel:null,notas:['LR: 31 contratos, Josidith R$152k (5 CNPJs)','Rebeka Iris integra o time de LR','96 reuniões Inove, ciclo médio 31 dias'],next:[],cons_notas:[],lider_leads:null,lider_lr:null},
+    Mai:{leads:null,funnel:null,notas:['Mês recorde: R$511.818 nos 3 produtos','Primeira venda Consultoria: 2F Engenharia R$60k','19 empresas qualificadas Consultoria SGQ/Processos','+782% crescimento LR Mar→Mai'],next:['Fechar contratos LR pendentes','Visitar 19 qualificadas com Fernando Noleto','Iniciar estratégia autoridade LR'],cons_notas:['Panorama de gestão concluído 15/05','Proposta R$100k Frutos do Brasil — aguarda atualização norma','Reunião Pockting com Fernando Noleto agendada 25/06'],lider_leads:null,lider_lr:'Pedro Martins'},
+    Jun:{leads:320,funnel:[320,67,20,17,10,6],notas:['Inove cresceu 71,9% vs maio — 8 vendas, R$199.330','40 contratos LR: Giraffas (7 unidades), Agrovale (4 CNPJs)','Aylanna liderou geração com 91 leads','227 leads descartados — oportunidade de melhoria na qualificação'],next:[],cons_notas:['Produto em formatação com Fernando Noleto','Proposta R$100k Frutos do Brasil em acompanhamento','Funil de nutrição segue como principal abordagem'],lider_leads:'Aylanna (91 leads)',lider_lr:'Pedro Martins'},
+    Jul:{leads:285,funnel:[285,81,27,20,14,3],notas:['Gabriela Lima liderou geração com 101 leads','Leads em andamento +20,9% vs jun (67→81)','Agendamentos cresceram de 20→27','Pedro liderou LR com 11 contratos, Victor 2','Inove caiu para 3 vendas — sazonalidade do período'],next:['Trabalhar 81 leads em andamento priorizando maior potencial','Aumentar conversão dos 27 em agendamento','Recuperar volume Inove com omnichannel, novo script e inscrição no ato','Retomar ritmo LR priorizando oportunidades de maior ticket','Avançar estruturação produto Consultoria e definir agenda de visitas','Fortalecer autoridade LR — podcasts, lives, blog IEL, franquias alimentícias','Acompanhar funil lead→qualificação→agendamento→reunião→venda, identificar gargalos'],cons_notas:['Produto em formatação — reuniões de alinhamento com Fernando Noleto','Proposta R$100k Frutos do Brasil em acompanhamento','Panorama de gestão concluído — visitas consultivas em continuidade'],lider_leads:'Gabriela Lima (101 leads)',lider_lr:'Pedro Martins (11 contratos)'},
+  },
+};
+let activeIdx=6,charts={};
+const fmt=v=>v>=1e6?'R$'+(v/1e6).toFixed(1)+'M':v>=1e3?'R$'+(v/1e3).toFixed(0)+'k':'R$'+Math.round(v).toLocaleString('pt-BR');
+const fmtFull=v=>'R$ '+Math.round(v).toLocaleString('pt-BR');
+const pct=(a,b)=>b===0?'—':(((a-b)/b)*100).toFixed(0)+'%';
+function delta(a,b){if(b===0)return '<span class="kpi-delta neutral">—</span>';let p=((a-b)/b*100).toFixed(0);let cls=a>=b?'up':'dn';let ar=a>=b?'↑':'↓';return `<span class="kpi-delta ${cls}">${ar} ${p}% vs ant.</span>`;}
+function destroyCharts(){Object.values(charts).forEach(c=>{try{c.destroy()}catch(e){}});charts={};}
+function renderTabs(){document.getElementById('tabs').innerHTML=DATA.months.map((m,i)=>`<button class="tab${i===activeIdx?' active':''}" onclick="switchTab(${i})">${m}</button>`).join('');}
+function switchTab(i){activeIdx=i;destroyCharts();renderTabs();renderMain();}
+function renderMain(){
+  const i=activeIdx,m=DATA.months[i],prev=i>0?i-1:null,d=DATA.details[m];
+  const total=DATA.lr[i]+DATA.inove[i]+DATA.cons[i];
+  const totalPrev=prev!==null?DATA.lr[prev]+DATA.inove[prev]+DATA.cons[prev]:0;
+  const contracts=DATA.lr_c[i]+DATA.inove_c[i]+DATA.cons_c[i];
+  const contractsPrev=prev!==null?DATA.lr_c[prev]+DATA.inove_c[prev]+DATA.cons_c[prev]:0;
+  const funnel=d.funnel;
+  const fColors=['#2a78d6','#1baf7a','#eb6834','#eda100','#4a3aa7','#e34948'];
+  const fLabels=['Gerados','Andamento','Agendados','Qualificados','Inscritos','Pgto confirmado'];
+  const consRows=['Pedro Martins','Victor Ramos','Rebeka Iris'].map(c=>{
+    const cd=DATA.cons_per[c];const cv=(cd.lr[i]||0)+(cd.inove[i]||0)+(cd.cons[i]||0);
+    if(cv>0)return `<tr><td>${c.split(' ')[0]}</td><td></td><td>${fmt(cv)}</td></tr>`;
+    return `<tr><td style="color:var(--text-muted)">${c.split(' ')[0]}</td><td style="color:var(--text-muted)">—</td><td style="color:var(--text-muted)">—</td></tr>`;
+  }).join('');
+  const acumLR=DATA.lr.slice(0,i+1).reduce((a,v)=>a+v,0);
+  const acumInove=DATA.inove.slice(0,i+1).reduce((a,v)=>a+v,0);
+  const acumCons=DATA.cons.slice(0,i+1).reduce((a,v)=>a+v,0);
+  document.getElementById('main').innerHTML=`
+  <div class="kpi-row">
+    <div class="kpi"><div class="kpi-label">Total vendido</div><div class="kpi-val" style="color:#2a78d6">${fmt(total)}</div>${delta(total,totalPrev)}</div>
+    <div class="kpi"><div class="kpi-label">Contratos</div><div class="kpi-val">${contracts}</div>${delta(contracts,contractsPrev)}</div>
+    <div class="kpi"><div class="kpi-label">LR</div><div class="kpi-val" style="color:#2a78d6">${fmt(DATA.lr[i])}</div>${delta(DATA.lr[i],prev!==null?DATA.lr[prev]:0)}</div>
+    <div class="kpi"><div class="kpi-label">Inove</div><div class="kpi-val" style="color:#1baf7a">${fmt(DATA.inove[i])}</div>${delta(DATA.inove[i],prev!==null?DATA.inove[prev]:0)}</div>
+    <div class="kpi"><div class="kpi-label">Acumulado 2026</div><div class="kpi-val">${fmt(acumLR+acumInove+acumCons)}</div><span class="kpi-delta neutral">Jan–${m}</span></div>
+    ${d.leads!==null?`<div class="kpi"><div class="kpi-label">Leads gerados</div><div class="kpi-val">${d.leads}</div><span class="kpi-delta neutral">${funnel[1]} em andamento</span></div>`:''}
+  </div>
+  ${funnel?`<div class="card" style="margin-bottom:10px"><div class="card-title">Funil de leads — ${m}/2026</div><div class="funnel-bar">${funnel.map((v,fi)=>`<div style="flex:${v};background:${fColors[fi]};min-width:${v>0?6:0}px" title="${fLabels[fi]}: ${v}"></div>`).join('')}</div><div class="funnel-labels">${funnel.map((v,fi)=>`<span><span style="width:8px;height:8px;border-radius:50%;background:${fColors[fi]};display:inline-block"></span>${fLabels[fi]}: <b>${v}</b></span>`).join('')}</div>${d.lider_leads?`<div style="margin-top:8px;font-size:11px;color:var(--text-muted)">Líder de geração: <b style="color:var(--text-secondary)">${d.lider_leads}</b></div>`:''}</div>`:''}
+  <div class="grid2">
+    <div class="card"><div class="card-title"><span class="dot lr"></span>Logística Reversa</div><div class="ps"><span class="psl">Contratos</span><span class="psv">${DATA.lr_c[i]}</span></div><div class="ps"><span class="psl">Total vendido</span><span class="psv">${fmtFull(DATA.lr[i])}</span></div><div class="ps"><span class="psl">Ticket médio</span><span class="psv">${DATA.lr_c[i]>0?fmtFull(Math.round(DATA.lr[i]/DATA.lr_c[i])):'—'}</span></div><div class="ps"><span class="psl">vs mês anterior</span><span class="psv">${prev!==null&&DATA.lr[prev]>0?pct(DATA.lr[i],DATA.lr[prev]):'—'}</span></div>${d.lider_lr?`<div style="margin-top:6px;font-size:11px;color:var(--text-muted)">Líder: <b style="color:var(--text-secondary)">${d.lider_lr}</b></div>`:''}</div>
+    <div class="card"><div class="card-title"><span class="dot inove"></span>Inove+Digital</div><div class="ps"><span class="psl">Contratos</span><span class="psv">${DATA.inove_c[i]}</span></div><div class="ps"><span class="psl">Total vendido</span><span class="psv">${fmtFull(DATA.inove[i])}</span></div><div class="ps"><span class="psl">Ticket médio</span><span class="psv">${DATA.inove_c[i]>0?fmtFull(Math.round(DATA.inove[i]/DATA.inove_c[i])):'—'}</span></div><div class="ps"><span class="psl">vs mês anterior</span><span class="psv">${prev!==null&&DATA.inove[prev]>0?pct(DATA.inove[i],DATA.inove[prev]):'—'}</span></div></div>
+  </div>
+  <div class="grid2" style="margin-bottom:10px">
+    <div class="card"><div class="card-title">Resultado por consultor</div><table class="cons-table"><tr><td style="font-size:11px;color:var(--text-muted)">Consultor</td><td></td><td style="font-size:11px;color:var(--text-muted);text-align:right">Total</td></tr>${consRows}</table></div>
+    <div class="card"><div class="card-title"><span class="dot cons"></span>Consultoria</div>${DATA.cons[i]>0?`<div class="ps"><span class="psl">Contratos</span><span class="psv">${DATA.cons_c[i]}</span></div><div class="ps"><span class="psl">Total</span><span class="psv">${fmtFull(DATA.cons[i])}</span></div>`:`<p class="empty" style="margin-bottom:8px">Sem fechamentos neste mês</p><span class="badge">19 qualificadas aguardando</span>`}<ul class="bullet-list" style="margin-top:8px">${d.cons_notas.map(n=>`<li>${n}</li>`).join('')}</ul></div>
+  </div>
+  <div class="card" style="margin-bottom:10px"><div class="card-title">Evolução Jan–${m} — total vendido</div><div class="legend"><span class="legend-item"><span class="legend-sq" style="background:#2a78d6"></span>Logística Reversa</span><span class="legend-item"><span class="legend-sq" style="background:#1baf7a"></span>Inove+Digital</span><span class="legend-item"><span class="legend-sq" style="background:#eb6834"></span>Consultoria</span></div><div class="chart-wrap" style="height:190px"><canvas id="chartEvol"></canvas></div></div>
+  ${d.notas.length?`<div class="card" style="margin-bottom:10px"><div class="card-title">Destaques do período</div><ul class="bullet-list">${d.notas.map(n=>`<li>${n}</li>`).join('')}</ul></div>`:''}
+  ${d.next.length?`<div class="card"><div class="card-title">Próximos 30 dias</div><ul class="bullet-list">${d.next.map(n=>`<li>${n}</li>`).join('')}</ul></div>`:''}`;
+  const ctx=document.getElementById('chartEvol');
+  if(ctx){charts.evol=new Chart(ctx,{type:'bar',data:{labels:DATA.months.slice(0,i+1),datasets:[{label:'LR',data:DATA.lr.slice(0,i+1),backgroundColor:'#2a78d6',stack:'s'},{label:'Inove',data:DATA.inove.slice(0,i+1),backgroundColor:'#1baf7a',stack:'s'},{label:'Cons',data:DATA.cons.slice(0,i+1),backgroundColor:'#eb6834',stack:'s'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmt(c.raw)}}},scales:{x:{stacked:true,grid:{display:false},ticks:{color:COLORS.muted,font:{size:11}},border:{display:false}},y:{stacked:true,grid:{color:COLORS.grid},ticks:{color:COLORS.muted,font:{size:11},callback:v=>fmt(v)},border:{display:false}}}}});}
+}
+renderTabs();renderMain();
+</script>
+</body>
+</html>
